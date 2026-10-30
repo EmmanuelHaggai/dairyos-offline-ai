@@ -6,7 +6,7 @@ DairyOS is an offline-first farm intelligence app that runs AI directly on an iP
 
 ## 🎬 Demo
 
-**[Watch the DairyOS offline demo on YouTube](YOUTUBE_DEMO_LINK_WILL_GO_HERE_AFTER_I_HAVE_UPLOADED_IT)**
+**[Watch the DairyOS offline demo on Vimeo](https://vimeo.com/1241299928?share=copy&fl=sv&fe=ci)**
 
 ## What it does
 
