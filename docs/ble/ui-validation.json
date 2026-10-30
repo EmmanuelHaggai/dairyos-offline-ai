@@ -1,0 +1,25 @@
+{
+  "checks": [
+    "Unconnected readings unknown",
+    "ON disabled without board",
+    "Simulation explicitly labeled",
+    "Temperature and humidity rendered",
+    "Normally-ON bulb starts ON with relay OFF",
+    "Normally-ON OFF waits for review",
+    "Cancel leaves bulb ON",
+    "Normally-ON OFF energizes relay",
+    "Normally-ON ON releases relay",
+    "Second output independently ON",
+    "Devices fits 320px with 44px controls",
+    "Devices fits 390px with 44px controls",
+    "Devices fits 428px with 44px controls",
+    "Devices fits 768px with 44px controls",
+    "Devices fits 1280px with 44px controls",
+    "Disconnect retains last values with original timestamp and stale status",
+    "Retained readings cannot enable controls",
+    "Last-updated timestamp stays unchanged after disconnect",
+    "Stale label appears only after five minutes without a valid sample"
+  ],
+  "runtimeErrors": [],
+  "hardwareTested": false
+}

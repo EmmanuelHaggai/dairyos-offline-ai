@@ -1,0 +1,21 @@
+import { build } from 'esbuild';
+import { execFileSync } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+
+await mkdir('.private/iphone', { recursive: true });
+const libraryModule = await build({ stdin: { contents: "export { starterLibrary } from './data/library';", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'cjs', write: false });
+const library = { exports: {} };
+new Function('module', libraryModule.outputFiles[0].text)(library);
+await writeFile('.private/iphone/starter-library.json', JSON.stringify(library.exports.starterLibrary));
+await build({ entryPoints: ['native/iphone/worker.ts'], bundle: true, platform: 'neutral', target: 'es2022', format: 'esm', packages: 'external', alias: { '@qvac/sdk': '@qvac/inference' }, outfile: '.private/iphone/worker.mjs' });
+await writeFile('.private/iphone/bootstrap.mjs', `const write = value => BareKit.IPC.write(Uint8Array.from((JSON.stringify(value)+'\\n').split('').map(c=>c.charCodeAt(0))));
+const fatal = error => write({id:'boot',type:'error',value:String(error?.stack || error)});
+Bare.on('uncaughtException', fatal);
+Bare.on('unhandledRejection', fatal);
+write({id:'boot',type:'phase',value:'Bare runtime started'});
+import('./worker.mjs').catch(fatal);
+`);
+execFileSync(process.execPath, ['node_modules/bare-pack/bin.js', '--host', 'ios-arm64', '--linked', '--imports', path.resolve('node_modules/@qvac/sdk/bare-imports.json'), '--out', '.private/iphone/worker.bundle', '.private/iphone/bootstrap.mjs'], { stdio: 'inherit' });
+execFileSync(process.execPath, ['node_modules/bare-link/bin.js', '--host', 'ios-arm64', '--out', '.private/iphone/addons', '.private/iphone/bootstrap.mjs'], { stdio: 'inherit' });
+console.log('Prepared shared inference engine for the native iPhone runtime.');

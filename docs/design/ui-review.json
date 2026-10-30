@@ -1,0 +1,33 @@
+{
+  "screenWidths": [
+    320,
+    390,
+    428,
+    768,
+    1280
+  ],
+  "smallTargets": [],
+  "overflows": [],
+  "runtimeErrors": [],
+  "contrast": {
+    "checked": 638,
+    "failures": []
+  },
+  "duplicateIds": [],
+  "screenshots": [
+    "docs/design/screens/ask-empty-428.png",
+    "docs/design/screens/ask-428.png",
+    "docs/design/screens/records-428.png",
+    "docs/design/screens/library-428.png",
+    "docs/design/screens/setup-428.png",
+    "docs/design/screens/ask-1280.png",
+    "docs/design/screens/records-1280.png",
+    "docs/design/screens/library-1280.png",
+    "docs/design/screens/setup-1280.png",
+    "docs/design/screens/record-form-428.png",
+    "docs/design/screens/records-populated-428.png",
+    "docs/design/screens/conversation-428.png",
+    "docs/design/screens/library-expanded-428.png",
+    "docs/design/screens/conversation-1280.png"
+  ]
+}

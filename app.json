@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "DairyOS Local",
+    "slug": "dairyos-local",
+    "version": "0.3.2",
+    "icon": "./assets/brand/app-icon-1024.png",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.emmanuelhaggai.dairyos.local",
+      "supportsTablet": false,
+      "infoPlist": {
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true,
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      ["expo-build-properties", { "ios": { "deploymentTarget": "17.0" } }],
+      ["expo-image-picker", { "photosPermission": "Choose a farm photo for analysis on this iPhone.", "cameraPermission": "Take a farm photo for analysis on this iPhone.", "microphonePermission": false }],
+      "expo-sqlite",
+      ["@qvac/sdk/expo-plugin", { "installMissingPrebuilds": true }]
+    ]
+  }
+}

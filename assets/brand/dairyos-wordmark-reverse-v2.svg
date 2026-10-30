@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 128" role="img" aria-labelledby="title desc">
+  <title id="title">DairyOS</title><desc id="desc">DairyOS farm intelligence platform</desc>
+  <g><path d="M22 57 64 27l42 30" fill="none" stroke="#F7FAF7" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><path d="M34 55v17M94 55v17" fill="none" stroke="#F7FAF7" stroke-width="6" stroke-linecap="round"/><circle cx="64" cy="57" r="7" fill="#B7E445"/><path d="M51 55a13 13 0 0 1 26 0M44 51a21 21 0 0 1 40 0" fill="none" stroke="#42B96B" stroke-width="4" stroke-linecap="round"/><path d="M24 103c15-12 28-18 40-18s25 6 40 18M25 105c15-5 28-8 39-8s24 3 39 8" fill="none" stroke="#42B96B" stroke-width="6" stroke-linecap="round"/><path d="M64 84v22" stroke="#B7E445" stroke-width="4" stroke-linecap="round"/></g>
+  <text x="153" y="86" fill="#F7FAF7" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="72" font-weight="750" letter-spacing="-3">Dairy<tspan fill="#42B96B">OS</tspan></text>
+</svg>

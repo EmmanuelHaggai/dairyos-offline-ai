@@ -1,0 +1,15 @@
+node_modules/
+.tools/
+.expo/
+ios/
+android/
+dist/
+qvac/
+models/
+*.gguf
+*.log
+.env
+.private/
+.DS_Store
+__pycache__/
+experiments/resource-probe/ResourceProbe.xcodeproj/
