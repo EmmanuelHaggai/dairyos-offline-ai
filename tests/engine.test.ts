@@ -97,3 +97,28 @@ test('cancellation during loading releases the model and does not start generati
   assert.deepEqual(calls, ['cancel:pending-load', 'unload:cancelled-model', 'close']);
   assert.equal(isBusy(), false);
 });
+
+test('local model verification can veto a proposed command without any phrase-based fallback', async () => {
+  for (const [approved, target, state, seconds, accepted] of [[false, 1, "ON", 10, false], [true, 1, "ON", 10, true], [true, 2, "ON", 10, false], [true, 1, "OFF", 10, false], [true, 1, "ON", 0, false], [true, 1, "ON", undefined, false]] as const) {
+    const { sdk, calls } = fixture(); let completions = 0;
+    sdk.completion = () => {
+      const content = JSON.stringify(++completions === 1
+        ? {intent:'command',target:1,state:'ON',seconds:10}
+        : {approved,target,state,seconds,requestMeaning:'Fixture authorization',clarification:'Which bulb and action do you mean?'});
+      return {requestId:'semantic-'+completions,final:Promise.resolve({contentText:content}),events:(async function*(){yield {type:'contentDelta',text:content};})()};
+    };
+    const result = await runInference({...options(),mode:'intent',question:'Uninterpreted fixture input',loadSDK:async()=>sdk as unknown as SDK});
+    assert.equal(JSON.parse(result.text).intent, accepted ? 'command' : 'clarify');
+    assert.equal(completions,2); assert.equal(isBusy(),false);
+    assert.deepEqual(calls,['load:/local/text.gguf','unload:model-1','close']);
+  }
+});
+test('a rejected sensor interpretation returns to ordinary guidance rather than fabricating readings', async () => {
+  const {sdk}=fixture();let count=0;
+  sdk.completion=()=>{
+    const content=JSON.stringify(++count===1?{intent:'sensors',metric:'temperature'}:{approved:false,clarification:''});
+    return {requestId:'read-'+count,final:Promise.resolve({contentText:content}),events:(async function*(){yield {type:'contentDelta',text:content};})()};
+  };
+  const result=await runInference({...options(),mode:'intent',question:'Uninterpreted fixture input',loadSDK:async()=>sdk as unknown as SDK});
+  assert.deepEqual(JSON.parse(result.text),{intent:'none'});assert.equal(count,2);
+});

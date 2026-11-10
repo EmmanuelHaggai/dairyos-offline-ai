@@ -1,0 +1,11 @@
+# Bulb UI and confirmation — DairyOS Local0.3.4 build12
+
+Both ON and OFF open a centered, accessible confirmation dialog rather than a review section below the controls. The dialog states the bulb, intended logical state, timed duration where applicable and the normally-ON/normally-OFF relay mapping. Cancel does not send a command. Double submission is blocked while a command is pending.
+
+After confirmation, the dialog waits for the board's matching session/sequence/state acknowledgment. On success it closes and shows per-bulb confirmation feedback. Timeout, write failure, board rejection or loss of connection shows an error without claiming success or replaying the command. Structured acknowledgment state includes the target, logical state, sequence, session and receipt time. A stale timeout cannot clear a newer pending command.
+
+Bulb1 remains normally ON (logical ON→relayOFF; logical OFF→relayON for the hold). Bulb2 remains normally OFF. The screen distinguishes Disconnected, Scanning, Connecting and Connected/waiting for fresh telemetry. When idle, the old always-enabled Disconnect control is now disabled and labeled Disconnected; a pending attempt offers Cancel connection and scanning offers Stop scan.
+
+Validation:36 TypeScript tests,29 browser UI checks and7 mocked-transport failure/duplicate checks pass, including ON/OFF review, cancel, successful acknowledgment closure, explicit disconnected controls and dialog layouts at320/390/768/1280px. Typecheck/lint and signed iPhone build pass. Screenshots: `docs/design/screens/bulb-off-confirmation-390.png` and `bulb-on-confirmation.png`. These UI tests use a labeled simulator; no physical output writes were required for this UI patch.
+
+The separate immediate reconnect test passed3/3 real iPhone cycles in482/528/581ms. The longer unexpected-loss/headphone investigation was deferred by the operator. A subsequent live trace independently recorded `CBErrorDomain6: The connection has timed out unexpectedly` after notification subscription, with signal approximately−95dBm and no telemetry. The UI correction does not claim to repair the underlying radio issue. The phone/board's physical link must still be established before the controls can be enabled.

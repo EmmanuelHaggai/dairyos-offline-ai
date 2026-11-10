@@ -11,7 +11,7 @@ The FARM004 server was read on30 October2026. `bulb_1.invert_display=1`; `bulb_2
 
 Relay energization and GPIO active-low are different concepts. Firmware already maps relay state to electrical pin level; the app must apply only the load/contact inversion above. Do not invert both layers twice.
 
-## iPhone behavior (0.3.2 build7)
+## iPhone behavior (0.3.2 build8)
 
 The original UI showed raw GPIO/relay state beside the bulb name. It now shows logical bulb state and a separate relay report. Requests and matching-session/sequence acknowledgments use the same mapping. The BLE wire format remains v1.
 
@@ -41,3 +41,13 @@ The phone's encrypted writes require authenticated pairing. The earlier live sen
 An explicit operator test launch with `DAIRYOS_BULB1_TEST=1` runs through the actual Devices UI: logical ON, short OFF, then restoration to ON. It waits for exact board acknowledgments, records failures rather than inventing success, and writes `Documents/bulb1-validation.json`. Ordinary app launches do not run this test.
 
 The deployed cloud poll and BLE service share the relays. The five-second cloud poll can reapply server desired state during a BLE hold. A phone BLE test must distinguish exact command ACKs from server revisions and note any override. Do not claim the full OFF hold was independently verified while the cloud controller was also writing. Cloud loss/offline operation, timer expiry, contact polarity and physical lamp response are separate commissioning checks. This phone update does not change the board firmware, server inversion, cloud rules or camera services.
+
+## Completed live iPhone test — 30 October2026,20:19 UTC
+
+After the operator changed the board's BLE write permissions for the demo, the actual Devices buttons completed the following sequence:
+
+-20:19:41.838 UTC: logical bulb ON / relay OFF acknowledged.
+-20:19:42.973 UTC: logical bulb OFF / relay ON acknowledged.
+-20:19:45.821 UTC: logical bulb ON / relay OFF restored and acknowledged.
+
+The report has `error=null`, `restored=true`, all three steps acknowledged and no JavaScript errors. Exact board command sequences advanced through7,8,9. This confirms the real iPhone BLE button/ACK path and inverted mapping; physical light output has not been confirmed by an observer in this session. The automatic actuation test was disabled after completion; the app was reopened with read-only Devices reconnect for demo use. The board permissions were changed by the operator, not by this app patch. The protected-pairing instructions above describe the earlier commissioning configuration.

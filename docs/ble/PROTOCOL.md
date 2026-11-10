@@ -1,3 +1,5 @@
+> **0.6.4 update:** persistent controls and coordinated database sync use BLE v2. See [Persistent control and sync](PERSISTENT-CONTROL-AND-SYNC.md). The v1 timer-only behavior below remains historical/reference compatibility; the app no longer invents a 10-second duration.
+
 # DairyOS BLE protocol v1
 
 One explicitly selected peripheral at a time. All integer fields are little endian; each frame is exactly 20 bytes, so application fragmentation is unnecessary at ATT MTU 23. UUIDs:
@@ -41,7 +43,7 @@ No raw pin numbers, toggle operations, text instructions or model output are acc
 
 A CoreBluetooth write response only confirms GATT delivery. App waits up to five seconds for a telemetry frame with the **same session and sequence**, no fault, and the requested target GPIO state. Missing ACK means unknown, not success. Last command confirmation is historical; latest telemetry controls the current-state label and can show OFF after the timer expires. A fault can be cleared by an acknowledged OFF. Reconnection requires fresh telemetry and a new explicit command.
 
-ON requires the user to review target/duration and confirm. OFF is immediate from its explicit button, but is still acknowledged. Offline chat handles sensor lookup without the model; chat actuation requests direct the user to Devices. Photo/model inference never writes controls. Conditional rules, website sync, account-role sync, pumps, arbitrary commands and background BLE are outside this phase.
+ON requires the user to review target/duration and confirm. OFF is immediate from its explicit button, but is still acknowledged. Ask handles sensor/state lookup and supported bulb requests locally. Commands from Ask and Devices share explicit confirmation and exact session/sequence/state acknowledgment. Only the user question is parsed for intent; model-generated text and photo analysis cannot send hardware commands. Photo/model inference never writes controls. Conditional rules, website sync, account-role sync, pumps, arbitrary commands and background BLE are outside this phase.
 
 The connected phone and board's authenticated bond plus physical enable contact form this pilot's access boundary. See [UNO Q setup](../../firmware/uno-q/README.md) for pairing and hardware commissioning requirements.
 

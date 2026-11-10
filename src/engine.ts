@@ -1,6 +1,7 @@
 import type { Reference, FarmRecord, Turn } from './domain';
 import { hasRepetition, localDate, makePrompt, photoRules, unsupportedPhotoAssessment, UnreliablePhotoError, photoReferenceFallback } from './domain';
 import { localReply } from './commands';
+import { intentRules, intentHistory, normalizeIntentJSON, validateIntent, verificationRules, intentSchema, verificationSchema } from './ble/semantic-intent';
 
 // SDK is loaded lazily so the local library and records work without a running model.
 type SDK = typeof import('@qvac/sdk');
@@ -15,16 +16,17 @@ export async function stopInference() {
 export function isBusy() { return current !== null; }
 
 export async function runInference(options: {
-  question: string; records: FarmRecord[]; references: Reference[]; turns: Turn[]; photoPath?: string; localDate?: string;
+  mode?: 'intent'; question: string; records: FarmRecord[]; references: Reference[]; turns: Turn[]; photoPath?: string; localDate?: string;
   onStatus: (status: string) => void; onText: (text: string) => void;
   paths: { text: string; vision: string; projection: string };
   prepare: () => void | Promise<void>;
   loadSDK?: () => Promise<SDK>;
   device?: 'cpu' | 'gpu';
+  diagnostics?: boolean; gpuLayers?: number;
 }) {
   if (current) throw new Error('Wait for the current answer to finish.');
   let prompt = makePrompt(options.question, options.records, options.references, options.turns, !!options.photoPath, undefined, options.localDate);
-  const direct = !options.photoPath ? localReply(options.question, options.records, options.localDate ?? localDate()) : null;
+  const direct = !options.mode && !options.photoPath ? localReply(options.question, options.records, options.localDate ?? localDate()) : null;
   if (direct !== null) {
     options.onText(direct.text); options.onStatus('Ready · ' + (direct.origin === 'records' ? 'saved local records' : 'local response'));
     return { text: direct.text, references: [], observation: '', elapsedMs: 0, firstTokenMs: undefined, stopped: false, limited: false, origin: direct.origin };
@@ -50,7 +52,11 @@ export async function runInference(options: {
         modelSrc: options.paths[vision ? 'vision' : 'text'],
         modelType: 'llm',
         modelConfig: {
-          device: options.device ?? 'gpu', ctx_size: 4096, predict: vision ? 180 : 320, reasoning_budget: 0,
+          device: options.device ?? 'gpu', ctx_size: vision ? 4096 : 2048, parallel: 1, verbosity: options.diagnostics ? 2 : 0,
+          // Keep the tested partial-offload budget independent of operator test flags.
+          ...(!vision && (options.device ?? 'gpu') === 'gpu' ? { gpu_layers: options.gpuLayers ?? 24 } : {}),
+          predict: vision ? 180 : 320, reasoning_budget: 0,
+          ...(!vision && (options.device ?? 'gpu') === 'gpu' ? { 'flash-attn': 'on' as const, 'cache-type-k': 'q8_0', 'cache-type-v': 'q8_0', 'batch-size': 128, 'ubatch-size': 32 } : {}),
           ...(vision ? { projectionModelSrc: options.paths.projection, image_no_upscale: 'on' } : {}),
         },
       });
@@ -58,10 +64,11 @@ export async function runInference(options: {
       modelId = await loading;
       check();
     }
-    async function run(systemPrompt: string, history: { role: 'user' | 'assistant'; content: string; attachments?: { path: string }[] }[], stream: boolean) {
+    async function run(systemPrompt: string, history: { role: 'user' | 'assistant'; content: string; attachments?: { path: string }[] }[], stream: boolean, settings?: { reasoning: number; predict: number; schema?: Record<string, unknown> }) {
       check();
+      const tokenLimit = settings?.predict ?? (stream ? 320 : 256);
       const generation = stream ? { temp: 0.3, top_p: 0.9, top_k: 20, presence_penalty: 1.0, repeat_penalty: 1.1 } : { temp: 0.2, repeat_penalty: 1.1 };
-      const completion = sdk.completion({ modelId: modelId!, history: [{ role: 'system', content: systemPrompt }, ...history], stream: true, captureThinking: true, kvCache: false, generationParams: { predict: stream ? 320 : 180, reasoning_budget: 0, ...generation } });
+      const completion = sdk.completion({ modelId: modelId!, history: [{ role: 'system', content: systemPrompt }, ...history], stream: true, captureThinking: true, kvCache: false, ...(settings?.schema ? { responseFormat: { type: 'json_schema' as const, json_schema: { name: 'request_check', schema: settings.schema } } } : {}), generationParams: { predict: tokenLimit, reasoning_budget: settings?.reasoning ?? 0, ...generation, ...(options.mode === 'intent' ? { temp: 0, repeat_penalty: 1, seed: 42 } : {}) } });
       operation.requestId = completion.requestId;
       // Consume both promises immediately: final can reject before events terminate on native errors.
       const final = completion.final.catch(error => { throw error; });
@@ -80,7 +87,7 @@ export async function runInference(options: {
         }
       }
       const completed = await final;
-      if (completed.stopReason === 'length' || (completed.stats?.generatedTokens ?? 0) >= (stream ? 320 : 180)) limited = true;
+      if (completed.stopReason === 'length' || (completed.stats?.generatedTokens ?? 0) >= tokenLimit) limited = true;
       check();
       if (!result.trim()) result = completed.contentText;
       if (!result.trim()) throw new Error('The model returned no answer. Try a shorter question.');
@@ -90,6 +97,24 @@ export async function runInference(options: {
       return result;
     }
 
+    if (options.mode === 'intent') {
+      await load(false);
+      options.onStatus('Understanding your request on this iPhone…');
+      let interpretation = normalizeIntentJSON(await run(intentRules + '\nReturn an INSTANCE with exactly these six keys, not a JSON schema. Example output shape: {"intent":"none","target":0,"state":"unknown","seconds":0,"metric":"both","clarification":""}. Use the values that match this request. target and seconds must be JSON numbers.' , intentHistory(options.question, options.turns), false, { reasoning: 0, predict: 256, schema: intentSchema }));
+      const candidate = validateIntent(interpretation);
+      let verification: { approved: boolean; target?: number; state?: string; seconds?: number; requestMeaning?: string; clarification?: string } | undefined;
+      if (candidate.kind === 'command' || candidate.kind === 'sensors' || candidate.kind === 'status') {
+        options.onStatus('Checking the request on this iPhone…');
+        verification = JSON.parse(normalizeIntentJSON(await run(verificationRules(candidate.kind === 'command'), intentHistory(options.question, options.turns), false, { reasoning: 0, predict: 128, schema: verificationSchema })));
+        if (verification?.approved !== true || (candidate.kind === 'command' && (verification.target !== candidate.target || verification.state !== (candidate.on ? 'ON' : 'OFF') || verification.seconds !== candidate.seconds))) {
+          interpretation = JSON.stringify(candidate.kind === 'command'
+            ? { intent: 'clarify', clarification: typeof verification?.clarification === 'string' && verification.clarification.trim() ? verification.clarification.slice(0, 500) : 'Which bulb should change, and what action do you want now?' }
+            : { intent: 'none' });
+        }
+      } else if (candidate.kind === 'clarify') interpretation = JSON.stringify({ intent: 'clarify', clarification: candidate.text });
+      validateIntent(interpretation);
+      return { text: interpretation, proposedIntent: candidate, verification, references: [], observation: '', elapsedMs: performance.now() - started, firstTokenMs, stopped: false, limited, origin: 'model' as const };
+    }
     let observation = '';
     if (options.photoPath) {
       await load(true);

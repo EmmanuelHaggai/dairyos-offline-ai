@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { describeFarmReading } from '../src/ble/chat-intents';
 import { commandFrame, decodeTelemetry, fresh } from '../src/ble/protocol';
-import { setBulbBLE, bleSnapshot, disconnectBLE, sensorReply, startSimulation } from '../src/ble/client';
+import { executeBulbBLE, setBulbBLE, bleSnapshot, disconnectBLE, startSimulation } from '../src/ble/client';
 function frame(flags = 10) {
   const b = new DataView(new ArrayBuffer(20)); b.setUint8(0, 1); b.setUint8(1, flags); b.setUint32(6, 42, true); b.setInt16(10, 2534, true); b.setUint16(12, 6025, true); return Array.from(new Uint8Array(b.buffer));
 }
@@ -12,7 +13,7 @@ test('BLE codec reads temperature, humidity, both GPIOs and interlock without de
 });
 test('BLE rejects malformed frames, unknown versions, flags and ranges', () => {
   assert.throws(() => decodeTelemetry([]));
-  for (const [offset, value] of [[0, 2], [1, 255], [18, 1], [13, 255], [2, -1]]) { const b = frame(); b[offset!] = value!; assert.throws(() => decodeTelemetry(b)); }
+  for (const [offset, value] of [[0, 3], [1, 255], [18, 1], [13, 255], [2, -1]]) { const b = frame(); b[offset!] = value!; assert.throws(() => decodeTelemetry(b)); }
   const b = frame(); b[6] = 0; assert.throws(() => decodeTelemetry(b));
 });
 test('BLE requires fresh telemetry, bounded duration, known target and interlock for ON', () => {
@@ -30,13 +31,13 @@ test('BLE command matches Python little endian wire format and explicit absolute
   assert.equal(Buffer.from(bytes).toString('hex'), '01017b0000002a0000000a000200000000000000');
 });
 test('computer simulator is labeled and cannot send hardware commands; disconnect retains last values with stale status', async () => {
-  assert.match(sensorReply('farm temperature now')!, /No BLE sensor/);
+  const reply = () => describeFarmReading({kind:'sensors',temperature:true,humidity:true}, bleSnapshot());
+  assert.match(reply(), /No measured/);
   await assert.rejects(setBulbBLE(1, true, 10));
   startSimulation();
-  assert.match(sensorReply('temperature and humidity')!, /SIMULATION/);
-  assert.equal(sensorReply('Should I turn bulb 1 on?'), null);
-  await setBulbBLE(2, false, 10); assert.match(bleSnapshot().lastCommand!, /SIMULATION/);
-  await disconnectBLE(); assert.ok(bleSnapshot().reading); assert.equal(bleSnapshot().telemetryReady, false); assert.match(sensorReply('temperature')!, /Latest received sensor values/); assert.match(sensorReply('temperature')!, /SIMULATION/); assert.equal(bleSnapshot().simulated, false);
+  assert.match(reply(), /SIMULATION/);
+  await setBulbBLE(2, false, 0); assert.match(bleSnapshot().lastCommand!, /SIMULATION/);
+  await disconnectBLE(); assert.ok(bleSnapshot().reading); assert.equal(bleSnapshot().telemetryReady, false); assert.match(reply(), /last received measurements/); assert.match(reply(), /SIMULATION/); assert.equal(bleSnapshot().simulated, false);
 });
 
 test('delays, disconnect, decode failure and invalid sensor frames retain last measured values and their original time', async () => {
@@ -102,12 +103,40 @@ test('commissioned normally-ON Bulb 1 and normally-OFF Bulb 2 map logical reques
   assert.equal(bulbOn(rawOff, 1), true); assert.equal(bulbOn(rawOff, 2), false);
   const rawOn = decodeTelemetry(frame(27));
   assert.equal(bulbOn(rawOn, 1), false); assert.equal(bulbOn(rawOn, 2), true);
-  assert.equal(bulbCommand(1, true, 10).relaySeconds, 0);
+  assert.equal(bulbCommand(1, true, 0).relaySeconds, 0);
   assert.equal(bulbCommand(1, false, 10).relaySeconds, 10);
   assert.equal(bulbCommand(2, true, 10).relaySeconds, 10);
-  assert.equal(bulbCommand(2, false, 10).relaySeconds, 0);
+  assert.equal(bulbCommand(2, false, 0).relaySeconds, 0);
   assert.throws(() => bulbCommand(1, false, 31));
-  assert.throws(() => bulbCommand(2, true, 0));
+  assert.equal(bulbCommand(2, true, 0).persistent, true);
   assert.equal(bulbCommand(1, true, 0).relaySeconds, 0, 'de-energizing does not require a hold duration');
   assert.equal(bulbOn({ ...rawOff, on: false }, 1), true, 'timer expiry / released relay returns normally-ON lamp to ON');
+});
+
+test('confirmation UI receives a structured logical ON/OFF acknowledgment only for the current command', async () => {
+  startSimulation();
+  try {
+    await setBulbBLE(1, false, 1);
+    const off = bleSnapshot().lastAction;
+    assert.equal(off?.target, 1); assert.equal(off?.on, false); assert.equal(off?.confirmed, true);
+    assert.equal(bleSnapshot().pending, undefined); assert.equal(bleSnapshot().pendingTarget, undefined);
+    assert.equal(bleSnapshot().reading?.on, true, 'normally-ON bulb OFF means relay ON');
+    await setBulbBLE(1, true, 0);
+    const on = bleSnapshot().lastAction;
+    assert.equal(on?.on, true); assert.equal(on?.confirmed, true);
+    assert.ok(on!.sequence > off!.sequence); assert.equal(on?.session, off?.session);
+    assert.equal(bleSnapshot().reading?.on, false, 'normally-ON bulb ON means relay OFF');
+  } finally { await disconnectBLE(); }
+});
+
+test('direct execution awaits its own acknowledgment and never accepts an earlier success for invalid input', async () => {
+  startSimulation();
+  try {
+    await executeBulbBLE(1, true);
+    const acknowledged = bleSnapshot().lastAction;
+    assert.equal(acknowledged?.confirmed, true);
+    assert.equal(acknowledged?.on, true);
+    await assert.rejects(executeBulbBLE(1, false, 31), /1 to 30/);
+    assert.equal(bleSnapshot().lastAction, acknowledged);
+  } finally { await disconnectBLE(); }
 });

@@ -1,0 +1,13 @@
+{
+  "checks": [
+    "Cancel sends zero transport writes",
+    "Pending command stays in dialog",
+    "ACK timeout stays visible as failure",
+    "Timeout never claims board confirmation",
+    "Write error shown in dialog",
+    "Double confirm sends exactly one write",
+    "Successful board ACK closes dialog"
+  ],
+  "runtimeErrors": [],
+  "transport": "explicit mock; no hardware writes"
+}

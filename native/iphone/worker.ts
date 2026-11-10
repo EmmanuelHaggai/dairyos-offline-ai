@@ -23,24 +23,31 @@ BareKit.IPC.on('data', (data: Buffer) => {
   }
 });
 
-async function handle(message: { id: string; command: string; value: Parameters<typeof runInference>[0] & { home: string; photoPath?: string } }) {
+async function handle(message: { id: string; command: string; value: Parameters<typeof runInference>[0] & { home: string; photoPath?: string; diagnostics?: boolean } }) {
   const { id, command, value } = message;
   if (command === 'stop') { await stopInference(); send(id, 'result', true); return; }
+  let unsubscribeLogs: (() => void) | undefined;
   try {
     const paths = Object.fromEntries(Object.entries(modelNames).map(([slot, name]) => [slot, path.join(value.home, 'models', name)])) as { text: string; vision: string; projection: string };
-    const result = await runInference({ ...value, localDate: value.localDate ?? localDate(), paths, device: 'gpu',
+    const result = await runInference({ ...value, localDate: value.localDate ?? localDate(), paths, device: value.device === 'cpu' ? 'cpu' : 'gpu',
       prepare: () => {
         for (const slot of value.photoPath ? ['text', 'vision', 'projection'] as const : ['text'] as const) {
           if (!fs.existsSync(paths[slot]) || fs.statSync(paths[slot]).size !== expectedModelBytes[slot]) throw new Error('Missing or incomplete ' + slot + ' model. Copy the verified model pack into Documents/models by USB.');
         }
         if (!configured) {
-          setConfig({ cacheDirectory: path.join(value.home, 'qvac-cache'), loggerLevel: 'error', loggerConsoleOutput: false });
+          setConfig({ cacheDirectory: path.join(value.home, 'qvac-cache'), loggerLevel: value.diagnostics ? 'info' : 'error', loggerConsoleOutput: false });
           setRuntimeContext({ runtime: 'bare', platform: 'ios', deviceBrand: 'Apple', deviceModel: 'iPhone14,3' });
           inference.registerPlugin(llmPlugin);
+          if (value.diagnostics) {
+            let lines = 0;
+            unsubscribeLogs = inference.subscribeServerLogs(log => {
+              if (++lines <= 500) { try { fs.appendFileSync(path.join(value.home, 'model-loader.log'), JSON.stringify({ ...log, message: log.message.slice(0, 1600) }) + '\n'); } catch {} }
+            });
+          }
           configured = true;
         }
       },
-      loadSDK: async () => inference as unknown as typeof import('@qvac/sdk'),
+      loadSDK: async () => ({ ...inference, close: async () => { unsubscribeLogs?.(); await inference.close(); } }) as unknown as typeof import('@qvac/sdk'),
       onStatus: status => send(id, 'status', status), onText: text => send(id, 'text', text),
     });
     send(id, 'result', result);

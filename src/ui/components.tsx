@@ -71,6 +71,7 @@ export function TodaySummary({ records, onOpen }: { records: FarmRecord[]; onOpe
 
 export function PromptList({ onChoose, disabled }: { onChoose: (question: string) => void; disabled: boolean }) {
   const prompts: { icon: IconName; title: string; detail: string; question: string }[] = [
+    { icon: 'device', title: 'Farm sensors', detail: 'Temperature and humidity from your nearby board', question: 'What is the temperature and humidity?' },
     { icon: 'milk', title: 'Milk today', detail: 'Look up your saved milk total', question: 'Milk today' },
     { icon: 'water', title: 'Clean milking routine', detail: 'Practical steps for the next milking', question: 'How do I keep milking clean?' },
     { icon: 'feed', title: 'Poultry water', detail: 'Drinking water and housing basics', question: 'How can I improve drinking water and housing for chickens?' },
@@ -108,7 +109,7 @@ export function AnswerText({ text }: { text: string }) {
 }
 
 export function ConversationTurn({ turn }: { turn: Turn }) {
-  return <View style={s.conversationTurn}><View style={s.questionBubble}>{turn.photo && <View style={s.photoLabel}><Icon name="image" size={14} color={c.forest2} /><Text style={s.questionMeta}>Farm photo</Text></View>}<Text selectable style={s.questionText}>{turn.question}</Text></View><View style={s.answerHeading}><Logo mark width={27} /><Text style={s.assistantName}>DairyOS</Text><Text style={s.answerTime}>{new Date(turn.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>{turn.status === 'stopped' && <Text style={s.partial}>Partial answer</Text>}</View><View style={s.answerPanel}><AnswerText text={turn.answer} />{turn.references.length > 0 && <Disclosure title={`Sources (${turn.references.length})`} detail="Local reference material supplied to this answer" icon="book">{turn.references.map(reference => <ReferenceCard key={reference.id} reference={reference} />)}</Disclosure>}</View></View>;
+  return <View nativeID={`dairyos-turn-${turn.id}`} style={s.conversationTurn}><View style={s.questionBubble}>{turn.photo && <View style={s.photoLabel}><Icon name="image" size={14} color={c.forest2} /><Text style={s.questionMeta}>Farm photo</Text></View>}<Text selectable style={s.questionText}>{turn.question}</Text></View><View style={s.answerHeading}><Logo mark width={27} /><Text style={s.assistantName}>DairyOS</Text><Text style={s.answerTime}>{new Date(turn.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>{turn.status === 'stopped' && <Text style={s.partial}>Partial answer</Text>}</View><View style={s.answerPanel}><AnswerText text={turn.answer} />{turn.references.length > 0 && <Disclosure title={`Sources (${turn.references.length})`} detail="Local reference material supplied to this answer" icon="book">{turn.references.map(reference => <ReferenceCard key={reference.id} reference={reference} />)}</Disclosure>}</View></View>;
 }
 
 export const s = StyleSheet.create({

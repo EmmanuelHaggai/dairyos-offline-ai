@@ -18,7 +18,7 @@ func telemetryDeliveryEvent(data: Data?, error: Error?) -> [String: Any] {
         return ["kind": "status", "text": "Connected. Waiting for the board's first telemetry update."]
     }
     guard data.count == 20 else {
-        return ["kind": "error", "text": "Telemetry packet has \(data.count) bytes; DairyOS BLE v1 requires 20. Last received values are retained.", "bytes": Array(data).map { Int($0) }]
+        return ["kind": "error", "text": "Telemetry packet has \(data.count) bytes; DairyOS BLE requires 20. Last received values are retained.", "bytes": Array(data).map { Int($0) }]
     }
     return ["kind": "telemetry", "bytes": Array(data).map { Int($0) }]
 }

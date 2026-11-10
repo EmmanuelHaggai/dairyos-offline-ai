@@ -8,7 +8,8 @@ target = project.new_target(:application, 'DairyOSPhone', :ios, '17.0')
 target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/iphone/DairyOSApp.swift')))
 target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/iphone/Bluetooth.swift')))
 target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/iphone/BLETelemetry.swift')))
-resources = [[File.join(root, 'dist'), 'Web'], [File.join(root, '.private/iphone/worker.bundle'), nil], [File.join(root, '.private/iphone/starter-library.json'), nil], [File.join(root, 'native/iphone/self-test.js'), nil], [File.join(root, 'native/iphone/bulb1-test.js'), nil], [File.join(root, 'native/iphone/Assets.xcassets'), nil], [File.join(root, '.private/photo-checks/leaf-b.jpg'), 'test-leaf.jpg']]
+target.source_build_phase.add_file_reference(project.main_group.new_file(File.join(root, 'native/iphone/BLEAttemptState.swift')))
+resources = [[File.join(root, 'dist'), 'Web'], [File.join(root, '.private/iphone/worker.bundle'), nil], [File.join(root, '.private/iphone/starter-library.json'), nil], [File.join(root, 'native/iphone/self-test.js'), nil], [File.join(root, 'native/iphone/bulb1-test.js'), nil], [File.join(root, 'native/iphone/reconnect-test.js'), nil], [File.join(root, 'native/iphone/semantic-test.js'), nil], [File.join(root, 'native/iphone/sensor-chat-test.js'), nil], [File.join(root, 'native/iphone/automatic-ble-test.js'), nil], [File.join(root, 'native/iphone/chat-feedback-test.js'), nil], [File.join(root, 'native/iphone/duration-test.js'), nil], [File.join(root, 'native/iphone/Assets.xcassets'), nil], [File.join(root, '.private/photo-checks/leaf-b.jpg'), 'test-leaf.jpg']]
 resources.each do |source, name|
   if name
     copied = File.join(root, '.private/iphone', name)
@@ -46,7 +47,7 @@ target.build_configurations.each do |config|
     'LD_RUNPATH_SEARCH_PATHS' => ['$(inherited)', '@executable_path/Frameworks'],
     'FRAMEWORK_SEARCH_PATHS' => ['$(inherited)'] + frameworks.map { |f| File.dirname(f) },
     'ASSETCATALOG_COMPILER_APPICON_NAME' => 'AppIcon', 'INFOPLIST_KEY_UIUserInterfaceStyle' => 'Light',
-    'CURRENT_PROJECT_VERSION' => '8', 'MARKETING_VERSION' => '0.3.2'
+    'CURRENT_PROJECT_VERSION' => '19', 'MARKETING_VERSION' => '0.6.4'
   })
 end
 project.save

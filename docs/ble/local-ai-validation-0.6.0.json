@@ -1,0 +1,405 @@
+{
+  "app": "DairyOS Local 0.6.0 build 15",
+  "status": "Core local-model and real bulb-control acceptance passed. Live numeric sensor validation pending: board marks sensor data invalid.",
+  "workerSHA256": "a25d25ab996e2fcc025e6c954a56606ad26b46ffbd83ff505f06e4d0a6af9aac",
+  "model": {
+    "file": "text-qwen3-4b-q3.gguf",
+    "name": "Qwen3-4B-Instruct-2507 Q3_K_M local requantization (experimental)",
+    "url": null,
+    "bytes": 2075618016,
+    "sha256": "8e607bb4c5562e1b514e733ea3d636a1ff5ac9fd914704fb4e8e729e50bd8b53",
+    "derivation": {
+      "source": {
+        "file": "text-qwen3-4b.gguf",
+        "name": "Qwen3-4B-Instruct-2507 Q4_K_M",
+        "url": "https://huggingface.co/bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF/resolve/ae44f08e1392f39c0e474af10c3ff8355c8b6688/Qwen_Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+        "bytes": 2497280736,
+        "sha256": "2fde00ce69dd4899c70d020845e2638353015bba0fdf161b3eb965f2bca4464e"
+      },
+      "tool": "ggml-org/llama.cpp",
+      "revision": "dde879bc4f954b809892fd0d660515f42536394a",
+      "command": "llama-quantize --allow-requantize models/text-qwen3-4b.gguf models/text-qwen3-4b-q3.gguf Q3_K_M 4",
+      "quality": "Lossy requantization from Q4_K_M; requires independent acceptance."
+    }
+  },
+  "actualOnPhone": {
+    "startedAt": "2026-11-01T18:09:38.926Z",
+    "resumedAt": "2026-11-01T18:20:21.046Z",
+    "completedAt": "2026-11-01T18:22:47.099Z",
+    "modelHashes": [
+      {
+        "file": "text-qwen3-4b-q3.gguf",
+        "matches": true,
+        "sha256": "8e607bb4c5562e1b514e733ea3d636a1ff5ac9fd914704fb4e8e729e50bd8b53"
+      },
+      {
+        "file": "vision-flash-mmproj.gguf",
+        "matches": true,
+        "sha256": "bbb0691873a4e638f6928898b3c3be9a4730bd4ced301197726a4fcb549695d0"
+      },
+      {
+        "file": "vision-flash.gguf",
+        "matches": true,
+        "sha256": "90b0abe16180f1fe5918bc5d89c3b6eeaf40520a50f906d6303a59a32b699fbc"
+      }
+    ],
+    "semanticPassed": 12,
+    "semanticTotal": 12,
+    "semanticCases": [
+      {
+        "elapsedMs": 27471.53437501192,
+        "exploratory": false,
+        "intent": {
+          "clarification": "",
+          "intent": "command",
+          "metric": "both",
+          "seconds": 5,
+          "state": "OFF",
+          "target": 1
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "command",
+          "on": false,
+          "seconds": 5,
+          "target": 1
+        },
+        "question": "Turn bulb 1 off for 5 seconds",
+        "shapeValid": true,
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Turn Bulb 1 off for a duration of 5 seconds.",
+          "state": "OFF",
+          "target": 1
+        }
+      },
+      {
+        "elapsedMs": 27038.572166979313,
+        "exploratory": false,
+        "intent": {
+          "clarification": "",
+          "intent": "command",
+          "metric": "both",
+          "seconds": 10,
+          "state": "ON",
+          "target": 1
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "command",
+          "on": true,
+          "seconds": 10,
+          "target": 1
+        },
+        "question": "turn it back on",
+        "shapeValid": true,
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Reverse the previous OFF action on Bulb 1.",
+          "state": "ON",
+          "target": 1
+        }
+      },
+      {
+        "elapsedMs": 31380.81108301878,
+        "exploratory": false,
+        "intent": {
+          "clarification": "",
+          "intent": "command",
+          "metric": "both",
+          "seconds": 10,
+          "state": "ON",
+          "target": 1
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "command",
+          "on": true,
+          "seconds": 10,
+          "target": 1
+        },
+        "question": "Turn bulb 1 back on",
+        "shapeValid": true,
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Turn Bulb 1 off to a previous state, which implies a request to restore its prior state (likely OFF), and now to ON. This is a request to switch Bulb 1 to ON, restoring a prior state.",
+          "state": "ON",
+          "target": 1
+        }
+      },
+      {
+        "elapsedMs": 29737.334041953087,
+        "exploratory": true,
+        "intent": {
+          "clarification": "",
+          "intent": "command",
+          "metric": "both",
+          "seconds": 10,
+          "state": "ON",
+          "target": 2
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "command",
+          "on": true,
+          "seconds": 10,
+          "target": 2
+        },
+        "question": "Could you bring the second light back to life?",
+        "shapeValid": true,
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Bring Bulb 2 back to an ON state (i.e., turn it ON if it is OFF, or leave it ON if it is already ON).",
+          "state": "ON",
+          "target": 2
+        }
+      },
+      {
+        "elapsedMs": 29784.587959051132,
+        "exploratory": false,
+        "intent": {
+          "clarification": "",
+          "intent": "command",
+          "metric": "both",
+          "seconds": 10,
+          "state": "ON",
+          "target": 2
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "command",
+          "on": true,
+          "seconds": 10,
+          "target": 2
+        },
+        "question": "Please illuminate the second bulb.",
+        "shapeValid": true,
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Authorize an immediate action to turn Bulb 2 ON.",
+          "state": "ON",
+          "target": 2
+        }
+      },
+      {
+        "elapsedMs": 24968.807457983494,
+        "exploratory": false,
+        "intent": {
+          "clarification": "",
+          "intent": "sensors",
+          "metric": "both",
+          "seconds": 10,
+          "state": "unknown",
+          "target": 0
+        },
+        "passed": true,
+        "proposedIntent": {
+          "humidity": true,
+          "kind": "sensors",
+          "temperature": true
+        },
+        "question": "How warm and humid is it in here right now?",
+        "shapeValid": true,
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Ask for the current actual temperature and humidity levels in the environment.",
+          "state": "unknown",
+          "target": 0
+        }
+      },
+      {
+        "elapsedMs": 14554.272374987602,
+        "exploratory": false,
+        "intent": {
+          "clarification": "Which bulb and state do you want? No command was sent.",
+          "intent": "clarify"
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "clarify",
+          "text": "Which bulb and state do you want? No command was sent."
+        },
+        "question": "Turn it off",
+        "shapeValid": true
+      },
+      {
+        "elapsedMs": 33980.72224998474,
+        "exploratory": false,
+        "intent": {
+          "clarification": "What bulb action do you want now?",
+          "intent": "clarify"
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "command",
+          "on": true,
+          "seconds": 10,
+          "target": 1
+        },
+        "question": "Do not turn bulb 1 off",
+        "shapeValid": true,
+        "verification": {
+          "approved": false,
+          "clarification": "What bulb action do you want now?",
+          "requestMeaning": "Prohibit turning Bulb 1 off; no action is authorized to turn it on or off.",
+          "state": "unknown",
+          "target": 1
+        }
+      },
+      {
+        "elapsedMs": 17060.208415985107,
+        "exploratory": false,
+        "intent": {
+          "clarification": "Should bulb 2 turn on when it gets hot?",
+          "intent": "clarify"
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "clarify",
+          "text": "Should bulb 2 turn on when it gets hot?"
+        },
+        "question": "If it gets hot, turn bulb 2 on",
+        "shapeValid": true
+      },
+      {
+        "elapsedMs": 14931.338333010674,
+        "exploratory": false,
+        "intent": {
+          "clarification": "",
+          "intent": "none",
+          "metric": "both",
+          "seconds": 10,
+          "state": "unknown",
+          "target": 0
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "none"
+        },
+        "question": "What temperature is best for calves?",
+        "shapeValid": true
+      },
+      {
+        "elapsedMs": 18293.23995900154,
+        "exploratory": false,
+        "intent": {
+          "clarification": "Should bulb 1 stay off?",
+          "intent": "clarify"
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "clarify",
+          "text": "Should bulb 1 stay off?"
+        },
+        "question": "Do not turn bulb 1 off",
+        "shapeValid": true
+      },
+      {
+        "elapsedMs": 23249.383792042732,
+        "exploratory": false,
+        "intent": {
+          "clarification": "Do you mean to turn bulb 2 on if the temperature rises above a certain level? Or should I interpret this as a request to turn bulb 2 on immediately when it gets hot?",
+          "intent": "clarify"
+        },
+        "passed": true,
+        "proposedIntent": {
+          "kind": "clarify",
+          "text": "Do you mean to turn bulb 2 on if the temperature rises above a certain level? Or should I interpret this as a request to turn bulb 2 on immediately when it gets hot?"
+        },
+        "question": "If it gets hot, turn bulb 2 on",
+        "shapeValid": true
+      }
+    ],
+    "guidance": {
+      "elapsedMs": 23346.24950003624,
+      "origin": "model",
+      "passed": true,
+      "text": "1. Clean milking equipment after each use with approved solution and water.  \n2. Keep resting and milking areas dry, well-drained, and free of manure.  \n3. Ensure milkers wear clean clothing and cover cuts; avoid using cleaning chemicals near stored milk."
+    },
+    "photo": {
+      "elapsedMs": 25831.670415997505,
+      "observation": "",
+      "origin": "library",
+      "passed": true,
+      "text": "I could not reliably assess this photo. The generated assessment was discarded; it cannot confirm health or rule out disease or damage.\n\nGeneral guidance from the offline library:\nInspecting a crop problem before treatment\nConfirm the crop identity first. Record when symptoms began, how they progressed, and which plants or plant parts are affected. Inspect the whole plant and its surroundings, not only one leaf. Take both whole-plant and close-up pictures. Ask about watering, site history and recent changes. Similar symptoms can have different causes; a general description or a single leaf photo is insufficient for a confident diagnosis. Identify the cause before selecting a treatment.\n\nPlease confirm the crop or animal, describe the marks or symptoms you can see, and say how long they have been present. This is general reference guidance, not a photo diagnosis."
+    },
+    "boardConfirmedActions": [
+      {
+        "completedAt": "2026-11-01T18:21:06.955Z",
+        "on": false,
+        "question": "Turn bulb 1 off for 5 seconds",
+        "receipt": "The board confirmed Bulb 1 OFF for 5 seconds (relay ON). It returns ON after the hold ends.\nThis confirms the board report, not electrical lamp output."
+      },
+      {
+        "completedAt": "2026-11-01T18:21:53.898Z",
+        "on": true,
+        "question": "turn it back on",
+        "receipt": "The board confirmed Bulb 1 ON (relay OFF).\nThis confirms the board report, not electrical lamp output."
+      },
+      {
+        "completedAt": "2026-11-01T18:22:47.074Z",
+        "on": true,
+        "question": "Turn bulb 1 back on",
+        "receipt": "The board confirmed Bulb 1 ON (relay OFF).\nThis confirms the board report, not electrical lamp output."
+      }
+    ],
+    "error": null
+  },
+  "performance": {
+    "interpretationMinimumSeconds": 14.6,
+    "interpretationMedianSeconds": 26.0,
+    "interpretationMaximumSeconds": 34.0,
+    "contextualUIFollowupSeconds": 46.9
+  },
+  "automatedTests": {
+    "passed": 43,
+    "failed": 0
+  },
+  "mockedBrowserIntegration": {
+    "scope": "Mock model and BLE transport; integration only",
+    "checks": [
+      "Model plan triggers automatic scan, connection and measured sensor reply",
+      "Model output opens the correct confirmation without writing",
+      "Cancellation sends no write",
+      "Board ACK is required for saved success",
+      "Model-requested context causes a second local interpretation",
+      "Invalid model capability output fails without writing"
+    ]
+  },
+  "limitations": [
+    "Experimental lossy requantization; a limited acceptance set is not a general model-accuracy guarantee.",
+    "Explicit human confirmation remains required. No automatic actuation retries.",
+    "ACKs establish board-reported relay state, not electrical lamp output.",
+    "Short timed OFF can restore the normally-ON bulb before a later AI request finishes.",
+    "Photo test used an honest offline-reference fallback; no reliable visual diagnosis was demonstrated.",
+    "Phone network settings were not freshly verified; inference uses local staged files without a remote language service.",
+    "Spontaneous dropout/headphone investigation remains deferred."
+  ],
+  "testResume": "Initial hardware scan found no board. After user confirmed availability, operator resumed with matching model hashes and unchanged worker digest; model tests were retained with their original timestamp.",
+  "actualSensorChat": {
+    "answer": "No measured temperature or humidity reading has been received yet. Connect the DairyOS board in Devices and wait for a sensor update. I will not substitute a default value.",
+    "completedAt": "2026-11-01T20:31:30.745Z",
+    "error": "Error: Reply did not match fresh received sensor telemetry.",
+    "measurements": [],
+    "passed": false,
+    "question": "How warm and humid is it here right now?",
+    "receivedFrames": 0,
+    "startedAt": "2026-11-01T20:30:47.334Z",
+    "boardReport": {
+      "connected": true,
+      "phase": "ready",
+      "rssi": -57,
+      "sensorValid": false,
+      "flags": 8,
+      "capturedAt": "2026-11-01T20:31:41Z"
+    },
+    "routingVerified": true,
+    "inventedMeasurements": false
+  }
+}

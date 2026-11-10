@@ -1,3 +1,4 @@
+import { modelNames } from '../src/model-specs';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import { runInference } from '../src/engine';
 import { starterLibrary } from '../data/library';
@@ -6,7 +7,7 @@ import type { FarmRecord } from '../src/domain';
 // Run inside the local Linux container with --network none and the same engine as the iPhone.
 async function main() {
 for (let attempt = 0; attempt < 900; attempt++) {
-  if ((await stat('/workspace/models/text.gguf').catch(() => null))?.size === 1280835840) break;
+  if ((await stat('/workspace/models/' + modelNames.text).catch(() => null))?.size === 2075618016) break;
   if (attempt === 0) console.log('Waiting for the verified local answer model…');
   if (attempt === 899) throw new Error('Answer model transfer is not complete yet.');
   await new Promise(resolve => setTimeout(resolve, 2000));
@@ -25,7 +26,7 @@ const results = [];
 for (const scenario of cases) {
   console.log('Checking ' + scenario.id);
   try {
-    const result = await runInference({ ...scenario, localDate: '2026-10-30', records, references: starterLibrary, turns: [], paths: { text: '/workspace/models/text.gguf', vision: '/workspace/models/vision-flash.gguf', projection: '/workspace/models/vision-flash-mmproj.gguf' }, device: 'cpu', prepare: () => {}, onStatus: value => console.log(scenario.id + ': ' + value.replaceAll('this iPhone', 'this computer')), onText: () => {} });
+    const result = await runInference({ ...scenario, localDate: '2026-10-30', records, references: starterLibrary, turns: [], paths: { text: '/workspace/models/' + modelNames.text, vision: '/workspace/models/vision-flash.gguf', projection: '/workspace/models/vision-flash-mmproj.gguf' }, device: 'cpu', prepare: () => {}, onStatus: value => console.log(scenario.id + ': ' + value.replaceAll('this iPhone', 'this computer')), onText: () => {} });
     results.push({ ...scenario, ...result });
     console.log(JSON.stringify({ case: scenario.id, text: result.text, observation: result.observation, seconds: result.elapsedMs / 1000, limited: result.limited }));
   } catch (error) {

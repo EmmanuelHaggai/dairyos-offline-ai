@@ -20,6 +20,8 @@ def download(model):
     if destination.exists() and destination.stat().st_size == model['bytes'] and digest(destination) == model['sha256']:
         print(f"Verified existing {destination.name}", flush=True)
         return
+    if not model.get('url'):
+        raise RuntimeError('This experimental model is generated locally. Follow its derivation in models/manifest.json, then verify its checksum; no remote download is configured.')
     partial = destination.with_suffix('.gguf.part')
     for attempt in range(3):
         try:

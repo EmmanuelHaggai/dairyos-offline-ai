@@ -1,0 +1,35 @@
+{
+  "completedAt": "2026-10-30T20:42:40.404Z",
+  "cycles": [
+    {
+      "connected": true,
+      "cycle": 1,
+      "disconnectedAt": "2026-10-30T20:42:38.740Z",
+      "immediateGapMs": 0,
+      "reconnectMs": 482,
+      "telemetryReceived": true
+    },
+    {
+      "connected": true,
+      "cycle": 2,
+      "disconnectedAt": "2026-10-30T20:42:39.244Z",
+      "immediateGapMs": 0,
+      "reconnectMs": 528,
+      "telemetryReceived": true
+    },
+    {
+      "connected": true,
+      "cycle": 3,
+      "disconnectedAt": "2026-10-30T20:42:39.799Z",
+      "immediateGapMs": 0,
+      "reconnectMs": 581,
+      "telemetryReceived": true
+    }
+  ],
+  "error": null,
+  "finalConnected": true,
+  "initialConnectionAt": "2026-10-30T20:42:38.740Z",
+  "rssi": -92,
+  "startedAt": "2026-10-30T20:42:24.003Z",
+  "writesSent": 0
+}

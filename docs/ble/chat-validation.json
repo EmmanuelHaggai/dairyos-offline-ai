@@ -1,0 +1,27 @@
+{
+  "checks": [
+    "Chat shows measured temperature, humidity and timestamp",
+    "Explicit chat command opens correct ON confirmation",
+    "No write before confirmation",
+    "Chat records board ACK after confirmation",
+    "Normally-ON chat ON sends relay OFF",
+    "It resolves to bulb 1",
+    "Cancel is recorded without an extra write",
+    "Normally-ON chat OFF energizes correct relay",
+    "Explicit second target replaces pronoun context",
+    "Follow-up refers to bulb 2",
+    "Bulb 2 ON command and ACK are shown",
+    "Follow-up write targets only bulb 2",
+    "Bulb status question is read-only",
+    "Ambiguous pronoun asks which bulb",
+    "Conditional text never opens a control proposal",
+    "Unrelated farm question clears device pronoun context",
+    "Clearing conversation clears device pronoun context",
+    "All device chat requests bypass the generation runtime",
+    "Disconnected chat control is explicitly refused",
+    "Disconnected sensor question keeps dated last measurement"
+  ],
+  "runtimeErrors": [],
+  "transport": "isolated mock; no physical hardware",
+  "writes": 4
+}

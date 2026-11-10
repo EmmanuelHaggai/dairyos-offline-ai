@@ -7,11 +7,11 @@ import type { FarmRecord, Reference, Turn } from '../src/domain';
 import { localDate, validateRecord } from '../src/domain';
 import { localReply } from '../src/commands';
 import { dockerBusy, runDockerInference, stopDockerInference } from './docker-inference';
-import { expectedModelBytes } from '../src/model-specs';
+import { expectedModelBytes, modelNames } from '../src/model-specs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = 8786;
-const paths = { text: path.join(root, 'models/text.gguf'), vision: path.join(root, 'models/vision-flash.gguf'), projection: path.join(root, 'models/vision-flash-mmproj.gguf') };
+const paths = { text: path.join(root, 'models', modelNames.text), vision: path.join(root, 'models/vision-flash.gguf'), projection: path.join(root, 'models/vision-flash-mmproj.gguf') };
 const contentTypes: Record<string, string> = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.ico': 'image/x-icon', '.ttf': 'font/ttf' };
 
 async function modelState() {
@@ -55,9 +55,9 @@ const server = http.createServer(async (req, res) => {
       const send = (type: string, value: unknown) => { if (!res.destroyed) res.write(JSON.stringify({ type, value }) + '\n'); };
       res.on('close', () => { if (!res.writableEnded) { stopDockerInference(); void stopInference().catch(() => {}); } });
       try {
-        const directRecord = !photoPath && localReply(input.question, records, input.localDate ?? localDate()) !== null;
+        const directRecord = input.mode !== 'intent' && !photoPath && localReply(input.question, records, input.localDate ?? localDate()) !== null;
         const infer = !directRecord && process.env.DAIRYOS_DESKTOP_DOCKER === '1' ? (options: Parameters<typeof runInference>[0]) => runDockerInference(root, options) : runInference;
-        const result = await infer({ question: input.question, records, references, turns, localDate: input.localDate ?? localDate(), photoPath, paths, device: 'cpu',
+        const result = await infer({ mode: input.mode === 'intent' ? 'intent' : undefined, question: input.question, records, references, turns, localDate: input.localDate ?? localDate(), photoPath, paths, device: 'cpu',
           prepare: async () => {
             for (const key of photoPath ? ['text', 'vision', 'projection'] as const : ['text'] as const) {
               const info = await stat(paths[key]).catch(() => null);

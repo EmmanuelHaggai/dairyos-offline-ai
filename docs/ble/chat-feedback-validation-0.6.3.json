@@ -1,0 +1,42 @@
+{
+  "version": "0.6.3",
+  "build": 18,
+  "responsiveUI": {
+    "scope": "Responsive UI fixtures; no real AI or hardware",
+    "checks": [
+      "Composer clears immediately and blurs before inference begins",
+      "Submitted request remains visible in the conversation",
+      "Processing card scrolls into view despite long history",
+      "Original request survives immediate composer clearing",
+      "Elapsed-time feedback remains active",
+      "Streaming reply follows the latest generated text",
+      "Reply remains visible after narrow/keyboard-sized viewport changes",
+      "Reading older messages pauses automatic following",
+      "Completion removes pending UI without duplicating the sent message",
+      "Failure preserves the submitted request and shows its error beside it"
+    ]
+  },
+  "directCommandRegression": {
+    "passed": 10,
+    "scope": "Mock model and BLE integration"
+  },
+  "unitTestsPassed": 45,
+  "typecheck": "passed",
+  "lint": "passed",
+  "iPhone": {
+    "answer": "Latest received farm sensor readings.\nTemperature: 26.7 \u00b0C.\nHumidity: 52%.\nLast updated 11/2/2026, 3:34:33 PM.",
+    "checks": [
+      "Composer cleared and keyboard focus dismissed immediately.",
+      "Original request displayed in conversation.",
+      "Processing indicator visible above composer.",
+      "Completed reply automatically visible."
+    ],
+    "completedAt": "2026-11-02T12:34:39.792Z",
+    "controlWrites": 0,
+    "passed": true,
+    "question": "What is the temperature and humidity?",
+    "startedAt": "2026-11-02T12:34:12.093Z"
+  },
+  "scope": "UI feedback and read-only sensor request; no actuator writes",
+  "previousModelAndBLEValidation": "docs/ble/direct-ai-validation-0.6.2.json"
+}

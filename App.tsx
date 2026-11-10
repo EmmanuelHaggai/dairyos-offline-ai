@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, AppState, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -16,7 +16,11 @@ import { expectedModelBytes } from './src/model-specs';
 import { phoneRequest, phoneShell } from './src/phone-shell';
 import { Badge, Button, ConversationTurn, Disclosure, Heading, Icon, Input, Logo, Navigation, PromptList, ReferenceCard, TodaySummary, guideCategory, s, type Tab } from './src/ui/components';
 import { Devices } from './src/ui/Devices';
-import { sensorReply } from './src/ble/client';
+import { bleSnapshot, subscribeBLE, executeBulbBLE, ensureBLEConnection, startAutomaticBLE, setBLEForeground } from './src/ble/client';
+import { liveReading, boardPresence } from './src/ble/state';
+import { describeFarmReading } from './src/ble/chat-intents';
+import { validateIntent } from './src/ble/semantic-intent';
+import { bulbCommand } from './src/ble/output-policy';
 import { colors as c } from './src/ui/theme';
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -27,6 +31,9 @@ function confirmRemoval(title: string, message: string, remove: () => void) {
 }
 
 export default function App() {
+  const [ble, setBle] = useState(bleSnapshot);
+  useEffect(() => subscribeBLE(setBle), []);
+  useEffect(() => startAutomaticBLE(), []);
   const [tab, setTab] = useState<Tab>('Ask');
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -35,6 +42,8 @@ export default function App() {
   const [question, setQuestion] = useState('');
   const [photo, setPhoto] = useState<string>();
   const [answer, setAnswer] = useState('');
+  const [submitted, setSubmitted] = useState<{ text: string; photo?: string }>();
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [failure, setFailure] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
   const [records, setRecords] = useState<FarmRecord[]>([]);
@@ -55,6 +64,8 @@ export default function App() {
   const [noteFormOpen, setNoteFormOpen] = useState(false);
   const [category, setCategory] = useState<'all' | 'livestock' | 'crops' | 'notes'>('all');
   const scroll = useRef<ScrollView>(null);
+  const requestInFlight = useRef(false);
+  const followLatest = useRef(true);
   const { width } = useWindowDimensions();
   const desktop = width >= 1000;
   const preview = Platform.OS === 'web' && !phoneShell;
@@ -66,9 +77,33 @@ export default function App() {
   const filteredLibrary = library.filter(reference => category === 'all' || guideCategory(reference) === category);
   const visibleLibrary = librarySearch.trim() ? retrieve(librarySearch, filteredLibrary, 200) : filteredLibrary;
 
+  const revealLatest = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (!followLatest.current) return;
+      scroll.current?.scrollToEnd({ animated: false });
+      requestAnimationFrame(() => { if (followLatest.current) scroll.current?.scrollToEnd({ animated: false }); });
+    });
+  }, []);
   useEffect(() => {
-    if (tab === 'Ask' && turns.length) requestAnimationFrame(() => scroll.current?.scrollToEnd({ animated: false }));
-  }, [turns.length, tab]);
+    if (tab === 'Ask' && (turns.length || submitted || busy || failure)) revealLatest();
+  }, [turns.length, tab, submitted, busy, status, answer, failure, revealLatest]);
+  useEffect(() => { if (tab === 'Ask') { followLatest.current = true; revealLatest(); } }, [tab, revealLatest]);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const pauseFollow = (event: Event) => {
+      const viewport = document.getElementById('dairyos-chat-scroll');
+      if (event.target instanceof Node && viewport?.contains(event.target)) followLatest.current = false;
+    };
+    document.addEventListener('wheel', pauseFollow, { passive: true, capture: true });
+    document.addEventListener('pointerdown', pauseFollow, { passive: true, capture: true });
+    return () => { document.removeEventListener('wheel', pauseFollow, true); document.removeEventListener('pointerdown', pauseFollow, true); };
+  }, []);
+  useEffect(() => {
+    if (!busy) return;
+    const began = Date.now();
+    const timer = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - began) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [busy]);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || document.getElementById('dairyos-interface-style')) return;
@@ -87,7 +122,7 @@ export default function App() {
         void refreshModels().then(setModels).catch(() => {});
       } catch (error) { setStatus('Storage error: ' + errorText(error)); setFailure('Local storage could not be opened. ' + errorText(error)); }
     })();
-    const listener = AppState.addEventListener('change', state => { if (state !== 'active') void stopInference().catch(() => {}); });
+    const listener = AppState.addEventListener('change', state => { setBLEForeground(state === 'active'); if (state !== 'active') void stopInference().catch(() => {}); });
     return () => { listener.remove(); void stopInference().catch(() => {}); };
   }, []);
 
@@ -132,30 +167,87 @@ export default function App() {
     if (text.length > 4000) throw new Error('Split long notes into sections under 4,000 characters.');
     setNoteText(text); setNoteTitle(asset.name.slice(0, 100));
   }
+  async function saveDeviceReply(text: string, response: string) {
+    await saveTurn({ question: text, answer: response, createdAt: new Date().toISOString(), references: [], photo: false, elapsedMs: 0, status: 'complete' });
+    setTurns(await getTurns()); setSubmitted(undefined); setMetrics('Request understood by local QVAC AI · board data stays local.');
+  }
   async function send() {
-    if (locked) return;
+    if (locked || requestInFlight.current) return;
     const text = question.trim() || (photo ? 'Describe this farm photo and suggest what I should check next.' : '');
     if (!text) return;
-    setBusy(true); setAnswer(''); setFailure('');
+    const selectedPhoto = photo;
+    requestInFlight.current = true; followLatest.current = true;
+    setQuestion(''); setSubmitted({ text, photo: selectedPhoto });
+    setBusy(true); setElapsedSeconds(0); setAnswer(''); setFailure(''); setStatus('Understanding your request…');
+    Keyboard.dismiss();
+    if (Platform.OS === 'web' && document.activeElement instanceof HTMLElement) document.activeElement.blur();
     try {
-      const sensor = !photo ? sensorReply(text) : null;
-      const result = sensor ? { text: sensor, origin: 'local' as const, references: [], elapsedMs: 0, observation: undefined, limited: false, stopped: false, firstTokenMs: undefined } : await answerQuestion({ question: text, records, references: library, turns, localDate: today(), photoPath: photo ? decodeURIComponent(photo.replace('file://', '')) : undefined, onStatus: setStatus, onText: setAnswer });
+      if (phoneShell) await phoneRequest('interactionBusy', { active: true });
+      await sendRequest(text, selectedPhoto);
+    } catch (error) { setFailure(errorText(error)); }
+    finally {
+      if (phoneShell) await phoneRequest('interactionBusy', { active: false }).catch(() => {});
+      requestInFlight.current = false; setBusy(false);
+    }
+  }
+  async function sendRequest(text: string, selectedPhoto?: string) {
+    if (!selectedPhoto) {
+      try {
+        let interpretation = await answerQuestion({ mode: 'intent', question: text, records: [], references: [], turns: [], onStatus: setStatus, onText: () => {} });
+        if (interpretation.stopped || interpretation.limited) throw new Error('Request interpretation was interrupted. No command was sent.');
+        let intent = validateIntent(interpretation.text);
+        if (intent.kind === 'clarify' && turns.length) {
+          interpretation = await answerQuestion({ mode: 'intent', question: text, records: [], references: [], turns, onStatus: setStatus, onText: () => {} });
+          if (interpretation.stopped || interpretation.limited) throw new Error('Context interpretation was interrupted. No command was sent.');
+          intent = validateIntent(interpretation.text);
+        }
+        if (intent.kind !== 'none') {
+          if (intent.kind === 'clarify') await saveDeviceReply(text, intent.text);
+          else {
+            let connectionError = '';
+            try { await ensureBLEConnection(setStatus); }
+            catch (error) { connectionError = errorText(error); }
+            const snapshot = bleSnapshot();
+            if (intent.kind === 'command') {
+              if (!liveReading(snapshot)) await saveDeviceReply(text, `No command was sent. ${connectionError}`);
+              else {
+                setStatus('Sending bulb command · waiting for board acknowledgment…');
+                try {
+                  const plan = bulbCommand(intent.target, intent.on, intent.seconds);
+                  await executeBulbBLE(intent.target, intent.on, intent.seconds);
+                  await saveDeviceReply(text, `${snapshot.simulated ? 'SIMULATION — no hardware was changed.\n' : ''}The board confirmed ${plan.description}.${!plan.persistent ? ` It returns ${intent.on ? 'OFF' : 'ON'} after the hold ends.` : ''}\nThis confirms the board report, not electrical lamp output.${bleSnapshot().reading?.protocolVersion === 2 ? bleSnapshot().reading?.syncPending ? '\nDatabase sync is queued on the board until it has internet.' : '\nThe board reports no local changes waiting for database sync.' : ''}`);
+                } catch (error) { await saveDeviceReply(text, `I could not confirm the bulb command. ${errorText(error)} No automatic retry was made.`); }
+              }
+            } else await saveDeviceReply(text, describeFarmReading(intent, snapshot) + (connectionError ? '\nConnection attempt: ' + connectionError : ''));
+          }
+          return;
+        }
+      } catch (error) { setFailure(errorText(error)); return; }
+
+    }
+    setAnswer(''); setFailure('');
+    try {
+      const result = await answerQuestion({ question: text, records, references: library, turns, localDate: today(), photoPath: selectedPhoto ? decodeURIComponent(selectedPhoto.replace('file://', '')) : undefined, onStatus: setStatus, onText: setAnswer });
       const body = (result.observation ? `Photo observations — unverified\n${result.observation}\n\nGuidance\n` : '') + result.text + (result.limited ? '\n\nPartial answer: the length limit was reached. Ask a narrower follow-up.' : '');
+      if (!body.trim()) throw new Error(result.stopped ? 'Stopped before an answer was ready. No command was sent.' : 'No answer was returned. Please try again.');
       if (body.trim()) {
-        await saveTurn({ question: text, answer: body, createdAt: new Date().toISOString(), references: result.references, photo: !!photo, elapsedMs: result.elapsedMs, status: result.stopped || result.limited ? 'stopped' : 'complete' });
-        setTurns(await getTurns());
+        await saveTurn({ question: text, answer: body, createdAt: new Date().toISOString(), references: result.references, photo: !!selectedPhoto, elapsedMs: result.elapsedMs, status: result.stopped || result.limited ? 'stopped' : 'complete' });
+        setTurns(await getTurns()); setSubmitted(undefined);
       }
       setMetrics(result.origin === 'records' ? 'Calculated directly from saved local records; no model used.' : result.origin === 'local' ? 'Immediate local response; no model used.' : result.origin === 'library' ? 'Unreliable photo assessment discarded; showing the offline inspection guide.' : `${result.stopped || result.limited ? 'Partial answer' : 'Completed'} in ${(result.elapsedMs / 1000).toFixed(1)}s. First generation token: ${result.firstTokenMs === undefined ? 'none' : (result.firstTokenMs / 1000).toFixed(1) + 's'}.`);
-      setAnswer(''); setQuestion(''); removePhoto();
-    } catch (error) { setFailure(errorText(error)); setAnswer(''); requestAnimationFrame(() => scroll.current?.scrollTo({ y: 0, animated: true })); }
-    finally { setBusy(false); }
+      setAnswer(''); removePhoto();
+    } catch (error) { setFailure(errorText(error)); setAnswer(''); revealLatest(); }
+
   }
   function confirmClear() {
-    confirmRemoval('Clear this conversation?', 'Local farm records and library notes will be kept.', () => { void action(async () => { await clearTurns(); setTurns([]); }); });
+    confirmRemoval('Clear this conversation?', 'Local farm records and library notes will be kept.', () => { void action(async () => { await clearTurns(); setTurns([]); setSubmitted(undefined); setFailure(''); setAnswer(''); }); });
   }
 
   const dateHeading = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }).toLocaleUpperCase();
-  const friendlyStatus = /photo/i.test(status) ? 'Looking at your photo…' : /writing/i.test(status) ? 'Writing your answer…' : /releasing|finishing/i.test(status) ? 'Finishing up…' : 'Preparing local AI…';
+  const sendingBulb = busy && status.startsWith('Sending bulb command');
+  const friendlyStatus = sendingBulb ? 'Waiting for the board to confirm…' : /understanding/i.test(status) ? 'Understanding your request…' : /checking/i.test(status) ? 'Checking the requested action…' : /connecting|bluetooth|nearby DairyOS/i.test(status) ? 'Connecting to your board…' : /photo/i.test(status) ? 'Looking at your photo…' : /writing/i.test(status) ? 'Writing your answer…' : /releasing|finishing/i.test(status) ? 'Finishing up…' : 'Preparing local AI…';
+
+  const failureNotice = failure ? <View accessibilityRole="alert" style={styles.error}><View style={styles.errorHeading}><Icon name="info" color={c.danger} /><Text style={styles.errorTitle}>Could not complete that request</Text><Button label="Dismiss message" icon="close" iconOnly variant="danger" onPress={() => { setFailure(''); if (!busy) setSubmitted(undefined); }} /></View><Text selectable style={s.body}>{failure}</Text></View> : null;
 
   const renderRecords = () => <>
     <Heading eyebrow={farmName.toLocaleUpperCase()} title="Farm records" subtitle="Measured amounts and dated observations. Saved on this device." wide={desktop} action={<Button label={recordFormOpen ? 'Close form' : 'Add record'} icon={recordFormOpen ? 'close' : 'plus'} variant={recordFormOpen ? 'secondary' : 'primary'} disabled={locked} onPress={() => setRecordFormOpen(!recordFormOpen)} />} />
@@ -197,11 +289,11 @@ export default function App() {
       <Text style={s.body}>Model files are kept locally. The app never downloads a missing model or switches to a cloud provider.</Text>
       {(['text', 'vision', 'projection'] as ModelSlot[]).map(slot => <View key={slot} style={styles.modelRow}><View style={styles.modelHeading}><Icon name={models[slot]?.bytes === expectedModelBytes[slot] ? 'check' : 'info'} color={models[slot]?.bytes === expectedModelBytes[slot] ? c.forest2 : c.warning} size={19} /><Text style={s.rowTitle}>{slot === 'text' ? 'Text guidance' : slot === 'vision' ? 'Photo observations' : 'Matching photo adapter'}</Text></View><Text style={s.caption}>{models[slot] ? `${models[slot]!.name} · ${(models[slot]!.bytes / 1e6).toFixed(0)} MB · ${models[slot]!.bytes === expectedModelBytes[slot] ? 'file present' : 'incomplete or unexpected file'}` : 'Not installed'}</Text>{Platform.OS !== 'web' && <Button label={'Choose ' + slot + ' GGUF'} icon="folder" variant="secondary" disabled={locked} onPress={() => { void action(async () => { await importModel(slot); setModels(modelState()); }); }} />}</View>)}
       <Button label={preview ? 'Refresh computer models' : 'Refresh files copied by USB'} icon="folder" variant="secondary" disabled={locked} onPress={() => { void action(async () => setModels(await refreshModels())); }} />
-      <Text style={s.caption}>Text: Qwen3.5-2B Q4_K_M. Photos: VisionPsy-Nano-460M-Flash with its matching Flash Q8 adapter. Do not mix Base and Flash files. A file being present does not establish answer accuracy or memory compatibility.</Text>
+      <Text style={s.caption}>Text: Qwen3-4B-Instruct-2507, experimental local Q3_K_M copy. Photos: VisionPsy-Nano-460M-Flash with its matching Flash Q8 adapter. Do not mix Base and Flash files. A file being present does not establish answer accuracy or memory compatibility.</Text>
     </Disclosure>
     <Disclosure title="Storage on this device" detail="Records, guides and conversations" icon="shield"><Text style={s.body}>This is one local farm profile. Saved records, conversations and reference notes stay in this app’s storage. They are independent of the DairyOS website and other devices.</Text><Text style={s.body}>Selected photos are processed locally in temporary storage. Conversations keep text, not a permanent image copy. Originals stay in Photos. Device backups may include local app data.</Text></Disclosure>
     <Disclosure title="Airplane-mode acceptance check" detail="Check your app before field use" icon="check"><View style={styles.steps}>{['Close and reopen the app with Wi-Fi and cellular data off.', 'Open a saved guide. Add a measured milk or feed entry and check its date and total.', 'Ask a short question in English. Try a clear farm photo and check the observations yourself.', 'Restart the app and confirm that your records remain.'].map((step, index) => <View key={step} style={styles.step}><Text style={styles.stepNumber}>{index + 1}</Text><Text style={[s.body, s.grow]}>{step}</Text></View>)}</View></Disclosure>
-    <Disclosure title="About this pilot" detail="Language, limits and app renewal" icon="info"><Text style={s.body}>Generated guidance is in English. Kiswahili keyword search is available in Library; generated Kiswahili guidance has not passed validation. Photo observations may be wrong and cannot establish a diagnosis.</Text><Text style={s.body}>Nearby BLE sensor readings and confirmed timed bulb controls are available in Devices on iPhone. Server sync and background automation are not enabled.</Text><Text style={s.body}>Use the existing Personal Team for testing and renew weekly. Reinstall the same app without uninstalling to keep local records, notes and models. iOS may need a connection to verify a newly signed build before offline use.</Text></Disclosure>
+    <Disclosure title="About this pilot" detail="Language, limits and app renewal" icon="info"><Text style={s.body}>Generated guidance is in English. Kiswahili keyword search is available in Library; generated Kiswahili guidance has not passed validation. Photo observations may be wrong and cannot establish a diagnosis.</Text><Text style={s.body}>Ask can read nearby BLE sensors and send clear bulb requests directly. Devices also provides manual controls. Server sync and background automation are not enabled.</Text><Text style={s.body}>Use the existing Personal Team for testing and renew weekly. Reinstall the same app without uninstalling to keep local records, notes and models. iOS may need a connection to verify a newly signed build before offline use.</Text></Disclosure>
     <Disclosure title="Device test details" detail="Last answer timing and runtime" icon="clock"><Text selectable style={s.body}>{phoneShell ? 'iPhone · native QVAC runtime' : preview ? 'Computer browser preview' : `${Device.modelName ?? 'Unknown device'} · ${Device.osName ?? 'iOS'} ${Device.osVersion ?? '?'}`}{'\n'}{metrics}</Text><Text style={s.caption}>Timing includes loading. Peak memory, prolonged heat and battery behavior require separate hardware checks.</Text></Disclosure>
   </>;
 
@@ -209,33 +301,37 @@ export default function App() {
     {desktop && <View nativeID="dairyos-sidebar" style={styles.sidebar}><Logo reverse width={185} /><Text style={styles.sidebarKicker}>LOCAL FARM ASSISTANT</Text><Pressable accessibilityRole="button" accessibilityLabel="Edit farm name" onPress={() => setTab('Setup')} style={styles.farmSwitcher}><Icon name="leaf" size={23} color={c.lime} /><View style={s.grow}><Text style={styles.sidebarFarm}>{farmName}</Text><Text style={styles.sidebarCaption}>Saved on this device</Text></View><Icon name="chevron" size={15} color={c.onForest} /></Pressable><Navigation active={tab} onChange={setTab} desktop /><View style={styles.sidebarFooter}><Icon name="shield" size={18} color={c.onForest} /><Text style={styles.sidebarCaption}>Records and guides, saved locally.</Text></View></View>}
     <View style={styles.main}>
       <View style={[styles.header, desktop && styles.headerWide]}>{desktop ? <View style={styles.headerContext}><Text style={styles.headerFarm}>{farmName}</Text><Text style={s.caption}>/ {tab === 'Ask' ? 'Local assistant' : tab}</Text></View> : <Logo width={150} />}<View style={styles.headerRight}>{preview && desktop && <Text style={styles.previewLabel}>Desktop preview</Text>}<Badge /></View></View>
+      {phoneShell && <Pressable accessibilityRole="button" accessibilityLabel="View board connection" onPress={() => setTab('Devices')} style={{ paddingHorizontal: 20, paddingVertical: 8 }}><Text style={s.caption}>{boardPresence(ble)}</Text></Pressable>}
       {!desktop && preview && <View style={styles.previewStrip}><Text style={styles.previewLabel}>Desktop preview · data stays in this browser</Text></View>}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView ref={scroll} key={tab} style={styles.flex} contentContainerStyle={[styles.content, desktop && styles.contentWide]} keyboardShouldPersistTaps="handled">
-          {!!failure && <View accessibilityRole="alert" style={styles.error}><View style={styles.errorHeading}><Icon name="info" color={c.danger} /><Text style={styles.errorTitle}>Could not complete that request</Text><Button label="Dismiss message" icon="close" iconOnly variant="danger" onPress={() => setFailure('')} /></View><Text selectable style={s.body}>{failure}</Text></View>}
+        <ScrollView nativeID="dairyos-chat-scroll" ref={scroll} key={tab} style={styles.flex} contentContainerStyle={[styles.content, desktop && styles.contentWide]} keyboardShouldPersistTaps="handled" onContentSizeChange={() => { if (tab === 'Ask') revealLatest(); }} onLayout={() => { if (tab === 'Ask') revealLatest(); }} onTouchStart={() => { followLatest.current = false; }} onScrollBeginDrag={() => { followLatest.current = false; }} onScroll={event => { const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent; if (contentSize.height - contentOffset.y - layoutMeasurement.height < 60) followLatest.current = true; }} scrollEventThrottle={100}>
+          {tab !== 'Ask' && failureNotice}
           {!loaded && !failure && <View style={styles.busyLine}><ActivityIndicator color={c.forest2} /><Text style={s.caption}>Opening local storage…</Text></View>}
           {tab === 'Ask' && <View style={[styles.askLayout, desktop && styles.columns]}><View style={styles.chatColumn}>
             <Heading eyebrow={dateHeading} title="Your farm, at hand." subtitle="Ask about your farm, check a record or add a photo." wide={desktop} />
             {!textReady && <View style={styles.setupNotice}><Icon name="info" color={c.warning} /><Text style={[s.caption, s.grow]}>Add model files in Setup to use AI. Records and the library already work.</Text><Button label="Open Setup" icon="arrow" iconOnly variant="ghost" onPress={() => setTab('Setup')} /></View>}
-            {!desktop && !turns.length && <TodaySummary records={records} onOpen={() => setTab('Records')} />}
-            {!turns.length && <PromptList disabled={locked} onChoose={setQuestion} />}
-            {turns.length > 0 && <View style={styles.sectionBar}><Text style={s.sectionTitle}>Conversation</Text><Button label="Clear conversation" icon="trash" variant="ghost" disabled={locked} onPress={confirmClear} /></View>}
+            {!desktop && !turns.length && !submitted && <TodaySummary records={records} onOpen={() => setTab('Records')} />}
+            {!turns.length && !submitted && <PromptList disabled={locked} onChoose={setQuestion} />}
+            {(turns.length > 0 || submitted) && <View style={styles.sectionBar}><Text style={s.sectionTitle}>Conversation</Text><Button label="Clear conversation" icon="trash" variant="ghost" disabled={locked} onPress={confirmClear} /></View>}
             {turns.map(turn => <ConversationTurn key={turn.id} turn={turn} />)}
-            {busy && <View style={styles.busyAnswer}><View style={styles.busyLine}><ActivityIndicator color={c.forest2} /><Text style={s.rowTitle}>{friendlyStatus}</Text></View>{!!answer && <Text selectable style={s.body}>{answer}</Text>}</View>}
+            {submitted && <View nativeID="dairyos-pending-request" style={s.questionBubble}>{submitted.photo && <Text style={s.questionMeta}>Farm photo attached</Text>}<Text selectable style={s.questionText}>{submitted.text}</Text></View>}
+            {busy && submitted && <View nativeID="dairyos-processing" accessibilityState={{ busy: true }} style={styles.busyAnswer}><View style={styles.busyLine}><ActivityIndicator color={c.forest2} /><Text accessibilityLiveRegion="polite" style={s.rowTitle}>{friendlyStatus}</Text></View><Text style={s.caption}>Working on this iPhone · {elapsedSeconds}s</Text>{!!answer && <Text nativeID="dairyos-streaming-reply" selectable style={s.body}>{answer}</Text>}</View>}
+            {failureNotice}
           </View>{desktop && <View style={styles.contextColumn}><TodaySummary records={records} onOpen={() => setTab('Records')} /><View style={styles.contextNote}><Icon name="shield" size={25} color={c.forest2} /><Text style={styles.contextTitle}>Available without a connection.</Text><Text style={s.caption}>Your saved records, local guides and AI are here when there is no signal.</Text><Text style={s.caption}>English pilot. Check photo observations before acting.</Text></View></View>}</View>}
           {tab === 'Records' && renderRecords()}
           {tab === 'Library' && renderLibrary()}
           {tab === 'Devices' && <Devices />}
           {tab === 'Setup' && renderSetup()}
         </ScrollView>
-        {tab === 'Ask' && <View style={[styles.composerShell, desktop && styles.composerShellWide]}><View style={[styles.composer, desktop && styles.composerWide]}>
-          {photo && <View style={styles.attachment}><Image source={{ uri: photo }} style={styles.thumbnail} accessibilityLabel="Selected farm photo" /><View style={s.grow}><Text style={s.rowTitle}>Farm photo attached</Text><Text style={s.caption}>Processed locally. Observations can be mistaken.</Text></View><Button label="Remove photo" icon="close" iconOnly variant="ghost" disabled={locked} onPress={removePhoto} /></View>}
+        {tab === 'Ask' && <View nativeID="dairyos-composer" style={[styles.composerShell, desktop && styles.composerShellWide]}><View style={[styles.composer, desktop && styles.composerWide]}>
+          {photo && !busy && <View style={styles.attachment}><Image source={{ uri: photo }} style={styles.thumbnail} accessibilityLabel="Selected farm photo" /><View style={s.grow}><Text style={s.rowTitle}>Farm photo attached</Text><Text style={s.caption}>Processed locally. Observations can be mistaken.</Text></View><Button label="Remove photo" icon="close" iconOnly variant="ghost" disabled={locked} onPress={removePhoto} /></View>}
           <Input accessibilityLabel="Farm question" placeholder="What would you like to know?" multiline value={question} onChangeText={setQuestion} maxLength={1500} editable={!locked} style={styles.questionInput} />
-          <View style={styles.composerTools}><View style={styles.attachTools}><Button label="Choose photo" icon="image" iconOnly={width < 420} variant="ghost" disabled={locked} onPress={() => { void action(() => selectPhoto(false)); }} /><Button label="Camera" icon="camera" iconOnly={width < 420} variant="ghost" disabled={locked} onPress={() => { void action(() => selectPhoto(true)); }} /></View>{busy ? <Button label="Stop answer" icon="stop" variant="secondary" onPress={() => { void stopInference().catch(error => setFailure(errorText(error))); }} /> : <Button label={photo ? 'Ask about this photo' : 'Ask DairyOS'} displayLabel={photo ? 'Ask photo' : undefined} icon="send" disabled={locked || (!question.trim() && !photo)} onPress={() => { void send(); }} />}</View>
-          <Text style={styles.composerHint}>{working ? 'Working with local files…' : busy ? friendlyStatus : 'English pilot · Check photo observations before acting.'}</Text>
+          <View style={styles.composerTools}><View style={styles.attachTools}><Button label="Choose photo" icon="image" iconOnly={width < 420} variant="ghost" disabled={locked} onPress={() => { void action(() => selectPhoto(false)); }} /><Button label="Camera" icon="camera" iconOnly={width < 420} variant="ghost" disabled={locked} onPress={() => { void action(() => selectPhoto(true)); }} /></View>{sendingBulb ? <Button label="Sending command…" disabled variant="secondary" onPress={() => {}} /> : busy ? <Button label="Stop answer" icon="stop" variant="secondary" onPress={() => { void stopInference().catch(error => setFailure(errorText(error))); }} /> : <Button label={photo ? 'Ask about this photo' : 'Ask DairyOS'} displayLabel={photo ? 'Ask photo' : undefined} icon="send" disabled={locked || (!question.trim() && !photo)} onPress={() => { void send(); }} />}</View>
+          <Text style={[styles.composerHint, busy && { fontSize: 13, fontWeight: '600', color: c.forest }]}>{working ? 'Working with local files…' : busy ? `${friendlyStatus} · ${elapsedSeconds}s` : 'Clear bulb commands are sent directly. I’ll ask if anything is unclear.'}</Text>
         </View></View>}
       </KeyboardAvoidingView>
       {!desktop && <Navigation active={tab} onChange={setTab} />}
+
     </View>
   </View></SafeAreaView></SafeAreaProvider>;
 }

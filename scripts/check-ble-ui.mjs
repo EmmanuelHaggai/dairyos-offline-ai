@@ -8,14 +8,25 @@ const check = async (name, expression) => { await browser.until(expression); che
 try {
   await browser.navigate('http://127.0.0.1:8786'); await browser.until(body('Your farm, at hand.'));
   await click('Devices'); await check('Unconnected readings unknown', body('No sensor reading received'));
+  await check('Disconnected connection label is explicit', body('Connection: Disconnected'));
+  await check('Disconnect is disabled when no link exists', `document.querySelector('[aria-label="Disconnected"]').getAttribute('aria-disabled')==='true'`);
   await check('ON disabled without board', `document.querySelector('[aria-label="Turn bulb 1 on"]').getAttribute('aria-disabled')==='true'`);
   await click('Start BLE simulator'); await check('Simulation explicitly labeled', body('SIMULATION · no real hardware'));
   await check('Temperature and humidity rendered', `${body('25 °C')} && ${body('60%')}`);
   await check('Normally-ON bulb starts ON with relay OFF', `${body('Bulb 1 · ON')} && ${body('Normally ON · relay OFF turns this bulb ON')}`);
-  await click('Turn bulb 1 off'); await check('Normally-ON OFF waits for review', `${body('Confirm Bulb 1 OFF for 10 seconds (relay ON)')} && ${body('Bulb 1 · ON')}`);
+  await click('Turn bulb 1 off'); await check('Normally-ON OFF waits for review', `${body('Turn Bulb 1 OFF for 10 seconds?')} && ${body('Bulb 1 · ON')}`);
+  await check('Confirmation is a visible dialog', `!!document.querySelector('[role=dialog]') && !!document.querySelector('#bulb-confirmation-dialog')`);
+  for (const width of [320, 390, 768, 1280]) {
+    await browser.viewport(width, 926); await browser.pause(100);
+    const fits = await browser.evaluate(`(() => {const r=document.getElementById('bulb-confirmation-dialog').getBoundingClientRect();return r.left>=0&&r.top>=0&&r.right<=${width}&&r.bottom<=926;})()`);
+    if (!fits) throw new Error('Confirmation clipped at '+width);
+    checks.push('Confirmation fits '+width+'px');
+    if (width === 390) await browser.screenshot('docs/design/screens/bulb-off-confirmation-390.png');
+  }
   await click('Cancel command'); await check('Cancel leaves bulb ON', body('Bulb 1 · ON'));
   await click('Turn bulb 1 off'); await click('Confirm bulb command'); await check('Normally-ON OFF energizes relay', `${body('Bulb 1 · OFF')} && ${body('SIMULATION: bulb 1 OFF (relay ON).')}`);
-  await click('Turn bulb 1 on'); await click('Confirm bulb command'); await check('Normally-ON ON releases relay', `${body('Bulb 1 · ON')} && ${body('SIMULATION: bulb 1 ON (relay OFF).')}`);
+  await click('Turn bulb 1 on'); await check('ON also requires clear confirmation', body('Turn Bulb 1 ON?')); await browser.screenshot('docs/design/screens/bulb-on-confirmation.png'); await click('Confirm bulb command'); await check('Normally-ON ON releases relay', `${body('Bulb 1 · ON')} && ${body('SIMULATION: bulb 1 ON (relay OFF).')}`);
+  await check('Successful command closes confirmation dialog', `!document.querySelector('#bulb-confirmation-dialog')`);
   await click('Turn bulb 2 on'); await click('Confirm bulb command'); await check('Second output independently ON', `${body('Bulb 1 · ON')} && ${body('Bulb 2 · ON')}`);
   for (const width of [320, 390, 428, 768, 1280]) {
     await browser.viewport(width, width < 768 ? 926 : 1000); await browser.pause(100);
@@ -26,6 +37,7 @@ try {
   }
   const lastUpdated = await browser.evaluate(`document.body.textContent.match(/Last updated ([^·]+)/)?.[1].trim()`);
   await click('Disconnect'); await check('Disconnect retains last values with original timestamp and stale status', `${body('25 °C')} && ${body('60%')} && !${body('stale; no valid sensor update for 5 minutes')} && ${body('Bulb 2 · last reported ON')}`);
+  await check('Disconnect becomes disabled after disconnection', `document.querySelector('[aria-label="Disconnected"]').getAttribute('aria-disabled')==='true'`);
   await check('Retained readings cannot enable controls', `document.querySelector('[aria-label="Turn bulb 1 on"]').getAttribute('aria-disabled')==='true'`);
   if (await browser.evaluate(`document.body.textContent.match(/Last updated ([^·]+)/)?.[1].trim()`) !== lastUpdated) throw new Error('Disconnect changed the original measurement timestamp');
   checks.push('Last-updated timestamp stays unchanged after disconnect');

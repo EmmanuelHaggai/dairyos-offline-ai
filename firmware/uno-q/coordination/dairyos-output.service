@@ -1,0 +1,22 @@
+[Unit]
+Description=DairyOS BLE and cloud output coordinator
+After=arduino-router.service
+Requires=arduino-router.service
+Before=dairyos-ble.service
+
+[Service]
+Type=simple
+User=arduino
+Group=arduino
+WorkingDirectory=/opt/dairyos-output
+ExecStart=/usr/bin/python3 /opt/dairyos-output/daemon.py
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=dairyos-output
+RuntimeDirectoryMode=0770
+StateDirectory=dairyos-output
+StateDirectoryMode=0700
+UMask=0007
+
+[Install]
+WantedBy=multi-user.target

@@ -11,7 +11,7 @@ export async function answerQuestion(options: Options) {
   if (isBusy()) throw new Error('Wait for the current answer.');
   if (phoneShell) {
     makePrompt(options.question, options.records, options.references, options.turns, !!options.photoPath, undefined, options.localDate);
-    const direct = !options.photoPath && localReply(options.question, options.records, options.localDate ?? localDate());
+    const direct = !options.mode && !options.photoPath && localReply(options.question, options.records, options.localDate ?? localDate());
     if (direct) {
       options.onText(direct.text);
       options.onStatus('Ready · local response');
@@ -19,7 +19,7 @@ export async function answerQuestion(options: Options) {
     }
     phoneBusy = true;
     try {
-      return await phoneRequest<Awaited<ReturnType<typeof runInference>>>('answer', { question: options.question, records: options.records, references: options.references, turns: options.turns, localDate: options.localDate, photo: options.photoPath }, event => {
+      return await phoneRequest<Awaited<ReturnType<typeof runInference>>>('answer', { mode: options.mode, question: options.question, records: options.records, references: options.references, turns: options.turns, localDate: options.localDate, photo: options.photoPath }, event => {
         if (event.type === 'text') options.onText(String(event.value));
         if (event.type === 'status') options.onStatus(String(event.value));
       });
@@ -35,7 +35,7 @@ export async function answerQuestion(options: Options) {
       if (blob.size > 2_000_000) throw new Error('Choose a photo smaller than 2 MB for the desktop preview.');
       photo = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = reject; reader.readAsDataURL(blob); });
     }
-    const response = await fetch('/api/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: options.question, records: options.records, references: options.references, turns: options.turns, localDate: options.localDate, photo }), signal: controller.signal });
+    const response = await fetch('/api/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: options.mode, question: options.question, records: options.records, references: options.references, turns: options.turns, localDate: options.localDate, photo }), signal: controller.signal });
     if (!response.ok) throw new Error(await response.text());
     if (!response.body) throw new Error('No local inference response.');
     const reader = response.body.getReader();

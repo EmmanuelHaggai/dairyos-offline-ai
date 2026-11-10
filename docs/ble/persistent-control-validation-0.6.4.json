@@ -1,0 +1,126 @@
+{
+  "version": "0.6.4",
+  "build": 19,
+  "appUnitTestsPassed": 49,
+  "mockDirectCommandUIChecksPassed": 10,
+  "pythonProtocolTestsPassed": 7,
+  "pythonCoordinationTestsPassed": 11,
+  "serverDatabaseTests": {
+    "passed": 11,
+    "databaseChanges": "rolled back",
+    "hardwareCommands": 0
+  },
+  "typecheck": "passed",
+  "lint": "passed",
+  "iPhoneModelDurationTests": {
+    "completedAt": "2026-11-02T13:58:35.438Z",
+    "controlWrites": 0,
+    "passed": true,
+    "results": [
+      {
+        "elapsedMs": 31293.068125009537,
+        "intent": {
+          "clarification": "",
+          "intent": "command",
+          "metric": "both",
+          "seconds": 0,
+          "state": "OFF",
+          "target": 1
+        },
+        "passed": true,
+        "question": "Turn bulb 1 off",
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Turn Bulb 1 off.",
+          "seconds": 0,
+          "state": "OFF",
+          "target": 1
+        }
+      },
+      {
+        "elapsedMs": 28978.288583040237,
+        "intent": {
+          "clarification": "",
+          "intent": "command",
+          "metric": "both",
+          "seconds": 0,
+          "state": "ON",
+          "target": 1
+        },
+        "passed": true,
+        "question": "Turn it back on",
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Turn Bulb 1 back on",
+          "seconds": 0,
+          "state": "ON",
+          "target": 1
+        }
+      },
+      {
+        "elapsedMs": 29084.484416007996,
+        "intent": {
+          "clarification": "",
+          "intent": "command",
+          "metric": "both",
+          "seconds": 0,
+          "state": "ON",
+          "target": 2
+        },
+        "passed": true,
+        "question": "Please illuminate the second bulb",
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Authorize an immediate action to turn ON the second bulb.",
+          "seconds": 0,
+          "state": "ON",
+          "target": 2
+        }
+      },
+      {
+        "elapsedMs": 29407.192708015442,
+        "intent": {
+          "clarification": "",
+          "intent": "command",
+          "metric": "both",
+          "seconds": 5,
+          "state": "OFF",
+          "target": 1
+        },
+        "passed": true,
+        "question": "Turn bulb 1 off for 5 seconds",
+        "verification": {
+          "approved": true,
+          "clarification": "",
+          "requestMeaning": "Turn Bulb 1 off for 5 seconds.",
+          "seconds": 5,
+          "state": "OFF",
+          "target": 1
+        }
+      }
+    ],
+    "startedAt": "2026-11-02T13:56:23.677Z"
+  },
+  "iPhoneInstalled": true,
+  "normalModeRestored": "all operator flags off",
+  "serverAPI": {
+    "deployed": true,
+    "path": "/api/v1/iot/local-command",
+    "publicWrongMethodStatus": 405,
+    "publicUnauthenticatedPostStatus": 401,
+    "backup": "/var/backups/dairyos-ble-sync/20261102T134938Z",
+    "schemaMigration": false
+  },
+  "boardIntegration": "PENDING: other computer must merge commissioned DHT11 MCU latch, install single writer, remove original cloud output writer and disconnect resets, enable v2, and physically validate. No persistent board actuation claimed.",
+  "modelTestNote": "An initial immediate back-to-back run encountered a model initialization error after the first case. The final four-case run passed sequentially with a two-second pause between requests; no model memory fix is claimed.",
+  "limits": [
+    "No internet path means remote database sync is deferred on the board.",
+    "Offline conflicts use local-wins-on-reconciliation; genuinely newer server revisions may supersede after sync.",
+    "Physical interlock and reboot can release outputs. No guaranteed power-loss restoration.",
+    "Matching board state reports do not prove electrical lamp output.",
+    "Untimed commands are blocked on a legacy v1 board rather than silently timed."
+  ]
+}

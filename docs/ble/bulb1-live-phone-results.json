@@ -1,0 +1,32 @@
+{
+  "startedAt": "2026-10-30T20:19:29.668Z",
+  "completedAt": "2026-10-30T20:19:45.821Z",
+  "profile": "bulb_1 normally ON",
+  "initialState": "ON (relay OFF), matching server baseline",
+  "steps": [
+    {
+      "acknowledged": true,
+      "acknowledgedAt": "2026-10-30T20:19:41.838Z",
+      "expectedRelay": "OFF",
+      "logicalBulb": "ON",
+      "requestedAt": "2026-10-30T20:19:40.603Z"
+    },
+    {
+      "acknowledged": true,
+      "acknowledgedAt": "2026-10-30T20:19:42.973Z",
+      "expectedRelay": "ON",
+      "logicalBulb": "OFF",
+      "requestedAt": "2026-10-30T20:19:41.838Z"
+    },
+    {
+      "acknowledged": true,
+      "acknowledgedAt": "2026-10-30T20:19:45.821Z",
+      "expectedRelay": "OFF",
+      "logicalBulb": "ON",
+      "requestedAt": "2026-10-30T20:19:44.477Z"
+    }
+  ],
+  "error": null,
+  "restored": true,
+  "jsErrors": []
+}

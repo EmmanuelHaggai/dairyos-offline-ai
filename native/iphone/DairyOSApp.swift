@@ -39,6 +39,9 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
     var incoming = Data()
     var bootMessage: [String: Any]?
     var activeID: String?
+    var inferenceRequests = 0
+    var interactionBusy = false
+    var operatorTestActive: Bool { selfTest || reconnectTest || ProcessInfo.processInfo.environment["DAIRYOS_DURATION_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_CHAT_FEEDBACK_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_AUTOMATIC_BLE_TEST"] == "1" }
     var pickerID: String?
     var photoPath: URL?
     var sampling: Timer?
@@ -50,15 +53,20 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
     let home = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     let selfTest = ProcessInfo.processInfo.arguments.contains("--dairyos-self-test") || ProcessInfo.processInfo.environment["DAIRYOS_SELF_TEST"] == "1"
     let bulbTest = ProcessInfo.processInfo.environment["DAIRYOS_BULB1_TEST"] == "1"
+    let reconnectTest = ProcessInfo.processInfo.environment["DAIRYOS_RECONNECT_TEST"] == "1"
     let bleTest = ProcessInfo.processInfo.environment["DAIRYOS_BLE_TEST"] == "1"
     let persistenceTest = ProcessInfo.processInfo.environment["DAIRYOS_PERSISTENCE_TEST"] == "1"
-    let models: [String: (String, Int64)] = ["text": ("text.gguf", 1280835840), "vision": ("vision-flash.gguf", 303143488), "projection": ("vision-flash-mmproj.gguf", 108782144)]
-    let checksums = ["text.gguf": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223", "vision-flash.gguf": "90b0abe16180f1fe5918bc5d89c3b6eeaf40520a50f906d6303a59a32b699fbc", "vision-flash-mmproj.gguf": "bbb0691873a4e638f6928898b3c3be9a4730bd4ced301197726a4fcb549695d0"]
+    let models: [String: (String, Int64)] = ["text": ("text-qwen3-4b-q3.gguf", 2075618016), "vision": ("vision-flash.gguf", 303143488), "projection": ("vision-flash-mmproj.gguf", 108782144)]
+    let checksums = ["text-qwen3-4b-q3.gguf": "8e607bb4c5562e1b514e733ea3d636a1ff5ac9fd914704fb4e8e729e50bd8b53", "vision-flash.gguf": "90b0abe16180f1fe5918bc5d89c3b6eeaf40520a50f906d6303a59a32b699fbc", "vision-flash-mmproj.gguf": "bbb0691873a4e638f6928898b3c3be9a4730bd4ced301197726a4fcb549695d0"]
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        UIApplication.shared.isIdleTimerDisabled = selfTest
+        if ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1" {
+            freopen(home.appendingPathComponent("native-model-loader.log").path, "a", stderr)
+        }
+        UIApplication.shared.isIdleTimerDisabled = operatorTestActive
         writeStatus("viewLoaded")
+        if ProcessInfo.processInfo.environment["DAIRYOS_AUTOMATIC_BLE_TEST"] == "1" { UIApplication.shared.isIdleTimerDisabled = true }
         try? FileManager.default.createDirectory(at: home.appendingPathComponent("models"), withIntermediateDirectories: true)
         view.backgroundColor = UIColor(red: 244.0/255, green: 247.0/255, blue: 243.0/255, alpha: 1)
         let config = WKWebViewConfiguration()
@@ -75,11 +83,17 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
         NSLayoutConstraint.activate([web.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), web.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor), web.leadingAnchor.constraint(equalTo: view.leadingAnchor), web.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
         web.load(URLRequest(url: URL(string: "dairyos://app/")!))
         NotificationCenter.default.addObserver(self, selector: #selector(bluetoothBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(bluetoothForeground), name: UIApplication.didBecomeActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.willResignActiveNotification, object: nil)
     }
 
     @objc func bluetoothBackground() {
+        bluetooth.event(["kind": "lifecycle", "active": false])
         bluetooth.disconnect("App paused. Output state is unknown; the board run limit still applies.")
+    }
+    @objc func bluetoothForeground() {
+        UIApplication.shared.isIdleTimerDisabled = interactionBusy || operatorTestActive || activeID != nil
+        bluetooth.event(["kind": "lifecycle", "active": true])
     }
     @objc func background() {
         if activeID != nil { write(["id": "background", "command": "stop", "value": [:]]) }
@@ -102,10 +116,42 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
                 else { state[slot] = NSNull() }
             }
             emit(id, "result", state)
+        case "semanticValidation" where ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1":
+            var report = value; report["workerSHA256"] = modelWorkerDigest()
+            try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("semantic-validation.json"), options: .atomic)
+            emit(id, "result", true)
+        case "semanticResume" where ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1" && ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_RESUME"] == "1":
+            if let data = try? Data(contentsOf: home.appendingPathComponent("semantic-validation.json")), let report = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let digest = modelWorkerDigest(), report["workerSHA256"] as? String == digest { emit(id, "result", report) }
+            else { emit(id, "error", "No saved semantic validation is available.") }
         case "answer": startAnswer(id, value)
+        case "durationValidation" where ProcessInfo.processInfo.environment["DAIRYOS_DURATION_TEST"] == "1":
+            var report = value; report["controlWrites"] = bluetooth.controlWrites
+            if bluetooth.controlWrites != 0 { report["passed"] = false }
+            try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("duration-validation.json"), options: .atomic)
+            emit(id, "result", true)
+        case "chatFeedbackValidation" where ProcessInfo.processInfo.environment["DAIRYOS_CHAT_FEEDBACK_TEST"] == "1":
+            var report = value; report["controlWrites"] = bluetooth.controlWrites
+            if bluetooth.controlWrites != 0 { report["passed"] = false }
+            try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("chat-feedback-validation.json"), options: .atomic)
+            emit(id, "result", true)
+        case "interactionBusy":
+            interactionBusy = value["active"] as? Bool == true
+            UIApplication.shared.isIdleTimerDisabled = interactionBusy || operatorTestActive || activeID != nil
+            emit(id, "result", true)
+        case "automaticBLEValidation" where ProcessInfo.processInfo.environment["DAIRYOS_AUTOMATIC_BLE_TEST"] == "1":
+            var report = value; report["inferenceRequests"] = inferenceRequests; report["controlWrites"] = bluetooth.controlWrites
+            if inferenceRequests != 0 || bluetooth.controlWrites != 0 { report["passed"] = false }
+            try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("automatic-ble-validation.json"), options: .atomic)
+            emit(id, "result", true)
+        case "sensorChatValidation" where ProcessInfo.processInfo.environment["DAIRYOS_SENSOR_CHAT_TEST"] == "1":
+            try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("sensor-chat-validation.json"), options: .atomic)
+            emit(id, "result", true)
         case "stop":
             if activeID != nil { write(["id": id, "command": "stop", "value": [:]]) } else { emit(id, "result", true) }
         case "photo": showPhotoPicker(id, camera: value["camera"] as? Bool ?? false)
+        case "reconnectValidation" where reconnectTest:
+            try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("reconnect-validation.json"), options: .atomic)
+            emit(id, "result", true)
         case "bulbValidation" where bulbTest:
             try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("bulb1-validation.json"), options: .atomic)
             web.takeSnapshot(with: nil) { image, _ in try? image?.pngData()?.write(to: self.home.appendingPathComponent("bulb1-validation.png")) }
@@ -114,13 +160,13 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
             try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent(persistenceTest ? "iphone-persistence-validation.json" : "iphone-validation.json"), options: .atomic)
             web.takeSnapshot(with: nil) { image, _ in try? image?.pngData()?.write(to: self.home.appendingPathComponent("iphone-validation.png")) }
             emit(id, "result", true)
-        case "testPhoto" where selfTest:
+        case "testPhoto" where selfTest || ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1":
             if let url = Bundle.main.url(forResource: "test-leaf", withExtension: "jpg"), let data = try? Data(contentsOf: url) { emit(id, "result", "data:image/jpeg;base64," + data.base64EncodedString()) }
             else { emit(id, "error", "Test photo missing") }
-        case "testLibrary" where selfTest:
+        case "testLibrary" where selfTest || ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1":
             if let url = Bundle.main.url(forResource: "starter-library", withExtension: "json"), let data = try? Data(contentsOf: url), let library = try? JSONSerialization.jsonObject(with: data) { emit(id, "result", library) }
             else { emit(id, "error", "Test library missing") }
-        case "verifyModels" where selfTest:
+        case "verifyModels" where selfTest || ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1":
             DispatchQueue.global(qos: .utility).async {
                 do {
                     var result: [[String: Any]] = []
@@ -140,6 +186,7 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
     }
 
     func startAnswer(_ id: String, _ input: [String: Any]) {
+        inferenceRequests += 1
         guard activeID == nil else { emit(id, "error", "Wait for the current answer to finish."); return }
         guard let question = input["question"] as? String, !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, question.count <= 1500 else { emit(id, "error", "Enter a question up to 1,500 characters."); return }
         var value = input
@@ -152,6 +199,10 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
             photoPath = file; value["photoPath"] = file.path
         }
         activeID = id; bootQuestion = question; value["home"] = home.path
+        value["diagnostics"] = ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1"
+        value["device"] = ProcessInfo.processInfo.environment["DAIRYOS_MODEL_DEVICE"] == "cpu" ? "cpu" : "gpu"
+        value.removeValue(forKey: "gpuLayers")
+        if ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1", let raw = ProcessInfo.processInfo.environment["DAIRYOS_GPU_LAYERS"], let layers = Int(raw), layers >= 0, layers <= 37 { value["gpuLayers"] = layers }
         UIApplication.shared.isIdleTimerDisabled = true
         incoming.removeAll(keepingCapacity: true)
         peakFootprint = 0; minAvailable = UInt64.max; sampleCount = 0
@@ -208,7 +259,7 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
             if id == "boot" && type == "error", let requestID = activeID { finish { self.emit(requestID, "error", message["value"] ?? "Native runtime error") }; continue }
             if id == activeID && (type == "result" || type == "error") {
                 sampleMemory()
-                if selfTest {
+                if selfTest || ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1" {
                     let report: [String: Any] = ["capturedAt": ISO8601DateFormatter().string(from: Date()), "peakSampledFootprintBytes": peakFootprint, "minimumSampledAvailableBytes": minAvailable, "samples": sampleCount, "question": bootQuestion ?? "", "type": type, "result": message["value"] ?? NSNull()]
                     try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("last-inference-check.json"), options: .atomic)
                     let logFile = home.appendingPathComponent("inference-checks.json")
@@ -236,8 +287,12 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
         // The worker completes QVAC cleanup before sending its final message.
         DispatchQueue.global(qos: .utility).async {
             channel?.close(); previous?.terminate()
-            DispatchQueue.main.async { self.activeID = nil; UIApplication.shared.isIdleTimerDisabled = self.selfTest; completion?() }
+            DispatchQueue.main.async { self.activeID = nil; UIApplication.shared.isIdleTimerDisabled = self.interactionBusy || self.operatorTestActive; completion?() }
         }
+    }
+    func modelWorkerDigest() -> String? {
+        guard let url = Bundle.main.url(forResource: "worker", withExtension: "bundle"), let data = try? Data(contentsOf: url) else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
     func sampleMemory() {
         minAvailable = min(minAvailable, UInt64(os_proc_available_memory()))
@@ -246,6 +301,12 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
         let status = withUnsafeMutablePointer(to: &info) { pointer in pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) } }
         if status == KERN_SUCCESS { peakFootprint = max(peakFootprint, info.phys_footprint) }
         sampleCount += 1
+        if ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1", sampleCount % 4 == 0 {
+            var data: [String: Any] = ["time": ISO8601DateFormatter().string(from: Date()), "peakFootprintBytes": peakFootprint, "minimumAvailableBytes": minAvailable, "samples": sampleCount, "physicalMemoryBytes": ProcessInfo.processInfo.physicalMemory, "thermalState": ProcessInfo.processInfo.thermalState.rawValue]
+            if status == KERN_SUCCESS { data["virtualSizeBytes"] = info.virtual_size; data["residentSizeBytes"] = info.resident_size }
+            if let gpu = MTLCreateSystemDefaultDevice() { data["metalAllocatedBytes"] = gpu.currentAllocatedSize; data["metalWorkingSetBytes"] = gpu.recommendedMaxWorkingSetSize }
+            try? JSONSerialization.data(withJSONObject: data).write(to: home.appendingPathComponent("semantic-memory.json"), options: .atomic)
+        }
     }
     func showPhotoPicker(_ id: String, camera: Bool) {
         guard pickerID == nil else { emit(id, "error", "Close the current photo picker first."); return }
@@ -277,9 +338,29 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { picker.dismiss(animated: true); deliverPhoto(nil) }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) { decisionHandler(navigationAction.request.url?.scheme == "dairyos" ? .allow : .cancel) }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if ProcessInfo.processInfo.environment["DAIRYOS_DURATION_TEST"] == "1", let url = Bundle.main.url(forResource: "duration-test", withExtension: "js"), let script = try? String(contentsOf: url) { webView.evaluateJavaScript(script, completionHandler: nil) }
+        if ProcessInfo.processInfo.environment["DAIRYOS_CHAT_FEEDBACK_TEST"] == "1", let url = Bundle.main.url(forResource: "chat-feedback-test", withExtension: "js"), let script = try? String(contentsOf: url) { webView.evaluateJavaScript(script, completionHandler: nil) }
+        if ProcessInfo.processInfo.environment["DAIRYOS_AUTOMATIC_BLE_TEST"] == "1", let url = Bundle.main.url(forResource: "automatic-ble-test", withExtension: "js"), let script = try? String(contentsOf: url) { webView.evaluateJavaScript(script, completionHandler: nil) }
+        if ProcessInfo.processInfo.environment["DAIRYOS_SENSOR_CHAT_TEST"] == "1", let url = Bundle.main.url(forResource: "sensor-chat-test", withExtension: "js"), let script = try? String(contentsOf: url) { webView.evaluateJavaScript(script, completionHandler: nil) }
+        if ProcessInfo.processInfo.environment["DAIRYOS_REVIEW_CHAT"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                webView.evaluateJavaScript("localStorage.getItem('dairyos-phone-v1:turns')") { value, _ in
+                    if let text = value as? String { try? text.write(to: self.home.appendingPathComponent("conversation-review.json"), atomically: true, encoding: .utf8) }
+                }
+            }
+        }
+        if ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1", let url = Bundle.main.url(forResource: "semantic-test", withExtension: "js"), let script = try? String(contentsOf: url) {
+            let actuate = ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_ACTUATE"] == "1" ? "true" : "false"
+            let smoke = ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_SMOKE"] == "1" ? "true" : "false"
+            let resume = ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_RESUME"] == "1" ? "true" : "false"
+            webView.evaluateJavaScript("window.dairyosSemanticActuate=\(actuate);window.dairyosSemanticSmoke=\(smoke);window.dairyosSemanticResume=\(resume);" + script, completionHandler: nil)
+        }
+        if reconnectTest, let url = Bundle.main.url(forResource: "reconnect-test", withExtension: "js"), let script = try? String(contentsOf: url) {
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
         if bleTest || bulbTest {
             let script = """
-            (async()=>{const pause=ms=>new Promise(r=>setTimeout(r,ms));for(let i=0;i<100;i++){const tab=document.querySelector('[role=tab][aria-label=Devices]');if(tab){tab.click();break;}await pause(100);}await pause(2000);document.querySelector('[aria-label="Scan for boards"]')?.click();for(let i=0;i<120;i++){const buttons=[...document.querySelectorAll('[role=button]')].filter(e=>e.getAttribute('aria-label')?.startsWith('Connect DairyOS UNO Q ('));if(buttons.length===1){buttons[0].click();break;}await pause(100);}})()
+            (async()=>{const pause=ms=>new Promise(r=>setTimeout(r,ms));for(let i=0;i<100;i++){const tab=document.querySelector('[role=tab][aria-label=Devices]');if(tab){tab.click();break;}await pause(100);}await pause(2000);document.querySelector('[aria-label="Scan for boards"]')?.click();for(let i=0;i<120;i++){const buttons=[...document.querySelectorAll('[role=button]')].filter(e=>e.getAttribute('aria-label')?.startsWith('Connect '));if(buttons.length===1){buttons[0].click();break;}await pause(100);}})()
             """
             webView.evaluateJavaScript(script, completionHandler: nil)
         }

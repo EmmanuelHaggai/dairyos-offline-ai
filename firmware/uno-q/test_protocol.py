@@ -49,4 +49,20 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(TimeoutError): self.controller.command(self.command())
         with self.assertRaises(ValueError): self.controller.command(self.command())
 
+class CoordinatedProtocolTests(unittest.TestCase):
+    def test_v2_persistent_opcode_is_not_confused_with_off_and_advertises_sync_pending(self):
+        class Output:
+            def __init__(self): self.calls=[]
+            def command(self,*args): self.calls.append(args); return True
+            def pending(self): return True
+        output=Output();controller=Controller(Bridge(),output);controller.session=42
+        controller.command(struct.pack('<BBIIHB7x',2,2,1,42,0,1))
+        self.assertEqual(output.calls,[(1,2,0)])
+        frame=controller.telemetry();self.assertEqual(frame[0],2);self.assertTrue(frame[1]&32)
+        with self.assertRaises(ValueError):controller.command(struct.pack('<BBIIHB7x',2,2,2,42,5,1))
+    def test_legacy_board_never_claims_persistent_support(self):
+        controller=Controller(Bridge());controller.session=42
+        self.assertEqual(controller.telemetry()[0],1)
+        with self.assertRaises(ValueError):controller.command(struct.pack('<BBIIHB7x',2,2,1,42,0,1))
+
 if __name__ == '__main__': unittest.main()

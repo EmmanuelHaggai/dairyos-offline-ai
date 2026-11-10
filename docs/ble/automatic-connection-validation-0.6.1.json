@@ -1,0 +1,70 @@
+{
+  "app": "DairyOS Local 0.6.1 build 16",
+  "status": "Implemented and installed. Real startup connection verified; latest physical resume check interrupted by app backgrounding and remains pending.",
+  "automatedTests": {
+    "passed": 44,
+    "failed": 0
+  },
+  "mockTransport": {
+    "scope": "Mock BLE transport; no AI inference or hardware actuation",
+    "checks": [
+      "Multiple unknown boards require selection; no inference or writes",
+      "Startup transport automatically discovers and connects without AI",
+      "Manual disconnect pauses automatic connection",
+      "Resume reconnects without AI",
+      "Unexpected loss retries the remembered board without commands",
+      "Absence is shown as not detected rather than a false range claim",
+      "Native discovery failure ends the attempt without a false connection",
+      "A later automatic attempt recovers after discovery failure",
+      "Background cancellation cannot turn scan completion into a new connection",
+      "Foreground resume starts automatic discovery again"
+    ]
+  },
+  "mockAIConfirmation": {
+    "scope": "Mock model and BLE transport; integration only",
+    "checks": [
+      "Model plan triggers automatic scan, connection and measured sensor reply",
+      "Model output opens the correct confirmation without writing",
+      "Cancellation sends no write",
+      "Board ACK is required for saved success",
+      "Model-requested context causes a second local interpretation",
+      "Invalid model capability output fails without writing"
+    ]
+  },
+  "actualLatestBuild": {
+    "startupConnected": true,
+    "startupConnectedAt": "2026-11-01T21:19:58Z",
+    "manualPauseObserved": true,
+    "manualDisconnectedAt": "2026-11-01T21:19:59Z",
+    "resumeRadioConnectedAt": "2026-11-01T21:20:14Z",
+    "resumeValidation": "App entered background during service discovery before it could complete. Latest foreground-aware test has not completed; no successful resume claim is made."
+  },
+  "earlierPhysicalAttempt": {
+    "checks": [
+      "Connected automatically from app startup without asking the AI or tapping Connect.",
+      "Manual disconnect remained paused."
+    ],
+    "completedAt": "2026-11-01T20:55:43.043Z",
+    "controlWrites": 0,
+    "error": "Error: Automatic connection timed out.",
+    "inferenceRequests": 0,
+    "passed": false,
+    "startedAt": "2026-11-01T20:54:10.578Z"
+  },
+  "behavior": {
+    "scanSeconds": 12,
+    "retryBackoffSeconds": 20,
+    "recentPresenceSeconds": 30,
+    "signalRefreshSeconds": 10,
+    "modelRequired": false,
+    "actuatorCommandsDuringHousekeeping": false,
+    "manualDisconnectPauses": true,
+    "scope": "Foreground only"
+  },
+  "limits": [
+    "Not detected cannot distinguish out of range, powered off, or not advertising.",
+    "RSSI is approximate, not an exact distance.",
+    "Several unknown boards require selection; a remembered board is not silently replaced.",
+    "Earlier service-discovery resume failures were recorded; latest native lifecycle change still needs uninterrupted foreground validation."
+  ]
+}

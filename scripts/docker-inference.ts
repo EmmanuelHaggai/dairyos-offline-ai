@@ -12,7 +12,7 @@ export async function runDockerInference(root: string, options: Options): Promis
   const args = ['run', '--rm', '-i', '--name', 'dairyos-local-inference', '--network', 'none', '--memory', '6g', '--cpus', '4', '-v', `${root}:/workspace`];
   for (const pkg of ['@qvac/fabric-linux-x64', 'bare-runtime-linux-x64', '@esbuild/linux-x64']) args.push('-v', `${path.join(root, '.private/linux/node_modules', pkg)}:/workspace/node_modules/${pkg}:ro`);
   args.push('-w', '/workspace', 'node:22.22.0-bookworm-slim', 'node', '--import', 'tsx', 'scripts/infer-request.ts');
-  const request = { question: options.question, records: options.records, references: options.references, turns: options.turns, localDate: options.localDate, photoPath: options.photoPath?.replace(root, '/workspace') };
+  const request = { mode: options.mode, question: options.question, records: options.records, references: options.references, turns: options.turns, localDate: options.localDate, photoPath: options.photoPath?.replace(root, '/workspace') };
   return new Promise<Result>((resolve, reject) => {
     child = spawn('docker', args, { stdio: ['pipe', 'pipe', 'pipe'] });
     let buffer = ''; let errors = ''; let result: Result | undefined; let failure: string | undefined;

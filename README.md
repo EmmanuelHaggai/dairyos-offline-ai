@@ -14,7 +14,7 @@ DairyOS is an offline-first farm intelligence app that runs AI directly on an iP
 - **Photo guidance:** Take or select a photo for preliminary AI observations and general guidance.
 - **Local farm records:** Ask about saved farm data, including supported milk and feed queries.
 - **BLE sensor readings:** View nearby temperature and humidity readings without Wi-Fi or cellular data.
-- **BLE equipment control:** Explicitly switch compatible bulbs off or turn them on for a reviewed, time-limited interval (e.g 1–30 seconds).
+- **BLE equipment control:** Untimed ON/OFF requests persist on a coordinated v2 board; explicitly requested timers remain bounded to 1–30 seconds. The board queues Bluetooth changes for database sync when its internet returns.
 - **Offline reference library:** Access bundled agricultural guidance and saved notes.
 
 ## Cloud to pocket
@@ -33,9 +33,9 @@ The original WhatsApp workflow, model downloads, installation, and any future cl
 
 - **Tested device:** iPhone 13 Pro Max (Apple A15 Bionic)
 - **AI runtime:** `@qvac/inference` (QVAC **0.22.0**)
-- **Text model:** Qwen3.5-2B Q4_K_M
+- **Text model candidate:** Qwen3-4B-Instruct-2507, experimental locally requantized Q3_K_M; see the [upgrade acceptance notes](docs/ble/LOCAL-AI-UPGRADE.md).
 - **Vision model:** VisionPsy-Nano-460M-Flash Q4_K_M with matching Q8 projection
-- **Model pack:** Approximately **1.69 GB**, downloaded and verified before offline use
+- **Model pack:** Approximately **2.49 GB**, staged and verified before offline use
 - **iOS implementation:** SwiftUI / WKWebView shell with QVAC's native Bare runtime in `native/iphone/`
 - **Local data:** Persistent on-device WebKit storage in the iPhone shell
 - **Hardware communication:** CoreBluetooth BLE for sensor readings and explicit timed controls
@@ -85,3 +85,23 @@ BLE readings and control are separate from AI inference. The app distinguishes f
 - [QVAC documentation](https://docs.qvac.tether.io/sdk/js-ts-sdk/)
 
 ---
+
+## Local AI device chat — 0.6.0 candidate
+
+Ask naturally about sensor readings or a bulb action. QVAC interprets the request and recent conversation on the iPhone, including follow-ups such as “turn it back on”. The app attempts a nearby BLE connection automatically, sends clear immediate bulb requests directly, and only records success after the matching board acknowledgment. Multiple nearby boards require explicit selection.
+
+The phrase router has been removed. Invalid model output sends no command; ambiguous language may require clarification. The model can misunderstand requests, and asks for clarification when the request is unresolved. Bulb 1 remains normally ON; timed relay holds remain bounded to 1–30 seconds.
+
+[Semantic AI implementation and limitations](docs/ble/SEMANTIC-AI.md).
+
+## Automatic nearby-board connection — 0.6.1
+
+Opening the iPhone app discovers and connects to the remembered DairyOS board without running AI. Connection/presence is visible across screens; Disconnect pauses automatic connection and Resume auto-connect restarts it. Several unknown boards require selection. See [Bluetooth behavior and range limits](docs/ble/AUTOMATIC-CONNECTION.md).
+
+## Direct AI bulb requests — 0.6.2
+
+Ask sends clear bulb commands directly, without an extra confirmation click, after local interpretation/authorization and BLE readiness checks. Board acknowledgments still determine success. See [direct command behavior](docs/ble/DIRECT-AI-COMMANDS.md).
+
+## Persistent control and database sync — 0.6.4 / build 19
+
+No requested duration means a persistent state, with independent local-model duration verification. Protocol v2 and the board single-writer update prevent a stale online poll from undoing a Bluetooth command. The server API is deployed; the commissioned UNO Q still needs integration and physical acceptance by its connected computer. See [implementation and commissioning instructions](docs/ble/PERSISTENT-CONTROL-AND-SYNC.md). A v1 board receives an upgrade message for untimed commands; the phone never substitutes 10 seconds. Earlier timer-only descriptions are historical.

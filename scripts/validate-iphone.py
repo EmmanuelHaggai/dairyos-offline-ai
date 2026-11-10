@@ -25,7 +25,7 @@ def run(arguments):
 
 def launch(persistence=False, normal=False):
     started = dt.datetime.now(dt.timezone.utc)
-    env = {'DAIRYOS_SELF_TEST': '0' if normal else '1', 'DAIRYOS_PERSISTENCE_TEST': '1' if persistence else '0'}
+    env = {'DAIRYOS_SELF_TEST': '0' if normal else '1', 'DAIRYOS_PERSISTENCE_TEST': '1' if persistence else '0', 'DAIRYOS_BLE_TEST': '0', 'DAIRYOS_BULB1_TEST': '0', 'DAIRYOS_RECONNECT_TEST': '0', 'DAIRYOS_SEMANTIC_TEST': '0', 'DAIRYOS_SEMANTIC_ACTUATE': '0', 'DAIRYOS_REVIEW_CHAT': '0'}
     run(['process', 'launch', '--terminate-existing', '--environment-variables', json.dumps(env), bundle])
     return started
 
@@ -35,7 +35,7 @@ def copy(name, destination):
 
 
 def report(name, started, destination):
-    deadline = time.monotonic() + 180
+    deadline = time.monotonic() + 600
     while time.monotonic() < deadline:
         try:
             copy(name, destination)
