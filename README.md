@@ -69,6 +69,10 @@ npm run build:iphone
 
 Install the resulting app using Xcode's device tools and the project's existing signing configuration, then copy the verified model pack into the app's `Documents/models` directory. The phone app runs without a preview server or development computer once installed and configured. The original Expo build has separate build requirements.
 
+If the iPhone reports that the app has expired, follow the [iPhone signing renewal steps](docs/IPHONE-RENEWAL.md) to rebuild and reinstall over the existing app while retaining its data and models.
+
+Build 24 prepares local AI on opening and keeps its text model ready for follow-ups while the app remains open in the foreground. The Ask screen also links directly to sensor readings without AI. See [performance behavior and validation](docs/IPHONE-PERFORMANCE.md).
+
 For detailed test procedures, see [VALIDATION.md](VALIDATION.md). For hardware setup, see [UNO Q wiring and setup](firmware/uno-q/README.md) and the [BLE protocol](docs/ble/PROTOCOL.md).
 
 ## Offline validation and limits

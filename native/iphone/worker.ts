@@ -1,4 +1,4 @@
-import { runInference, stopInference } from '../../src/engine';
+import { runInference, stopInference, type ModelSession } from '../../src/engine';
 import { expectedModelBytes, modelNames } from '../../src/model-specs';
 import { localDate } from '../../src/domain';
 import fs from 'bare-fs';
@@ -14,6 +14,15 @@ globalThis.performance = performance as unknown as Performance;
 const send = (id: string, type: string, value: unknown) => BareKit.IPC.write(Buffer.from(JSON.stringify({ id, type, value }) + '\n'));
 let buffer = '';
 let configured = false;
+const session: ModelSession = {};
+let unsubscribeLogs: (() => void) | undefined;
+async function release() {
+  if (session.modelId) await inference.unloadModel({ modelId: session.modelId, clearStorage: false });
+  session.modelId = undefined; session.key = undefined;
+  unsubscribeLogs?.(); unsubscribeLogs = undefined;
+  if (configured) await inference.close();
+  configured = false;
+}
 BareKit.IPC.on('data', (data: Buffer) => {
   buffer += data.toString();
   let end: number;
@@ -26,10 +35,10 @@ BareKit.IPC.on('data', (data: Buffer) => {
 async function handle(message: { id: string; command: string; value: Parameters<typeof runInference>[0] & { home: string; photoPath?: string; diagnostics?: boolean } }) {
   const { id, command, value } = message;
   if (command === 'stop') { await stopInference(); send(id, 'result', true); return; }
-  let unsubscribeLogs: (() => void) | undefined;
   try {
+    if (command === 'release') { await release(); send(id, 'result', true); return; }
     const paths = Object.fromEntries(Object.entries(modelNames).map(([slot, name]) => [slot, path.join(value.home, 'models', name)])) as { text: string; vision: string; projection: string };
-    const result = await runInference({ ...value, localDate: value.localDate ?? localDate(), paths, device: value.device === 'cpu' ? 'cpu' : 'gpu',
+    const result = await runInference({ ...value, session, localDate: value.localDate ?? localDate(), paths, device: value.device === 'cpu' ? 'cpu' : 'gpu',
       prepare: () => {
         for (const slot of value.photoPath ? ['text', 'vision', 'projection'] as const : ['text'] as const) {
           if (!fs.existsSync(paths[slot]) || fs.statSync(paths[slot]).size !== expectedModelBytes[slot]) throw new Error('Missing or incomplete ' + slot + ' model. Copy the verified model pack into Documents/models by USB.');
@@ -47,11 +56,11 @@ async function handle(message: { id: string; command: string; value: Parameters<
           configured = true;
         }
       },
-      loadSDK: async () => ({ ...inference, close: async () => { unsubscribeLogs?.(); await inference.close(); } }) as unknown as typeof import('@qvac/sdk'),
+      loadSDK: async () => ({ ...inference, close: async () => {} }) as unknown as typeof import('@qvac/sdk'),
       onStatus: status => send(id, 'status', status), onText: text => send(id, 'text', text),
     });
     send(id, 'result', result);
-  } catch (error) { send(id, 'error', error instanceof Error ? error.message : String(error)); }
+  } catch (error) { await release().catch(() => {}); send(id, 'error', error instanceof Error ? error.message : String(error)); }
 }
 
 BareKit.IPC.write(Buffer.from(JSON.stringify({ id: 'boot', type: 'ready', value: true }) + '\n'));

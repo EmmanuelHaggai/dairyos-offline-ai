@@ -40,8 +40,61 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
     var bootMessage: [String: Any]?
     var activeID: String?
     var inferenceRequests = 0
+    var webReady = false
+    let performanceCases: [(label: String, question: String, mode: String?)] = [
+        ("sensor-cold", "What are the temperature and humidity right now?", "intent"),
+        ("sensor-warm1", "What are the temperature and humidity right now?", "intent"),
+        ("sensor-warm2", "What are the temperature and humidity right now?", "intent"),
+        ("hello-interpretation", "hello", "intent"),
+        ("hello-answer", "hello", nil),
+        ("guidance-interpretation", "How do I keep milking clean? Give three brief steps.", "intent"),
+        ("guidance-answer", "How do I keep milking clean? Give three brief steps.", nil)
+    ]
+    var performanceRows: [[String: Any]] = []
+    var performanceStarted = Date()
+    var performanceRequestStarted = Date()
+    func savePerformance(_ error: String? = nil, complete: Bool = false) {
+        var report: [String: Any] = ["startedAt": ISO8601DateFormatter().string(from: performanceStarted), "requests": performanceRows, "controlWrites": bluetooth.controlWrites, "passed": complete && error == nil && performanceRows.count == performanceCases.count]
+        if let error = error { report["error"] = error }
+        if complete { report["completedAt"] = ISO8601DateFormatter().string(from: Date()) }
+        try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("performance-validation.json"), options: .atomic)
+    }
+    func runPerformanceRequest() {
+        let index = performanceRows.count
+        if index == performanceCases.count { savePerformance(complete: true); return }
+        let item = performanceCases[index]
+        var references: Any = []
+        if let url = Bundle.main.url(forResource: "starter-library", withExtension: "json"), let data = try? Data(contentsOf: url), let library = try? JSONSerialization.jsonObject(with: data) { references = library }
+        var input: [String: Any] = ["question": item.question, "records": [], "references": references, "turns": []]
+        if let mode = item.mode { input["mode"] = mode }
+        performanceRequestStarted = Date()
+        startAnswer("_benchmark\(index)", input)
+    }
+    func recordPerformance(_ type: String, _ value: Any) {
+        guard let result = value as? [String: Any], type == "result" else { savePerformance(String(describing: value), complete: true); return }
+        let item = performanceCases[performanceRows.count]
+        let intent = (result["text"] as? String).flatMap { $0.data(using: .utf8) }.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        let verification = result["verification"] as? [String: Any]
+        let validOutput: Bool
+        if item.label.hasPrefix("sensor") { validOutput = intent?["intent"] as? String == "sensors" && intent?["metric"] as? String == "both" && verification?["approved"] as? Bool == true }
+        else if item.mode == "intent" { validOutput = intent?["intent"] as? String == "none" }
+        else { validOutput = !(result["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let passed = result["origin"] as? String == "model" && result["stopped"] as? Bool == false && result["limited"] as? Bool == false && validOutput && result["reusedModel"] as? Bool == !performanceRows.isEmpty
+        var row = result; row["label"] = item.label; row["question"] = item.question; row["passed"] = passed; row["wallMs"] = Date().timeIntervalSince(performanceRequestStarted) * 1000
+        performanceRows.append(row)
+        savePerformance()
+        if !passed { savePerformance("Model output or reuse failed: " + item.label, complete: true); return }
+        DispatchQueue.main.async { self.runPerformanceRequest() }
+    }
+    var closeRuntimeCompletion: (() -> Void)?
+    var releasingRuntime = false
+    var queuedRequest: (id: String, input: [String: Any])?
+    var memoryPressure = false
+    var activeInput: [String: Any]?
+    var pausedRequest: (id: String, input: [String: Any], deadline: Date)?
+    var deferredReply: (id: String, type: String, value: Any)?
     var interactionBusy = false
-    var operatorTestActive: Bool { selfTest || reconnectTest || ProcessInfo.processInfo.environment["DAIRYOS_DURATION_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_CHAT_FEEDBACK_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_AUTOMATIC_BLE_TEST"] == "1" }
+    var operatorTestActive: Bool { ProcessInfo.processInfo.environment["DAIRYOS_PERFORMANCE_TEST"] == "1" || selfTest || reconnectTest || ProcessInfo.processInfo.environment["DAIRYOS_DURATION_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_CHAT_FEEDBACK_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_AUTOMATIC_BLE_TEST"] == "1" }
     var pickerID: String?
     var photoPath: URL?
     var sampling: Timer?
@@ -84,19 +137,74 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
         web.load(URLRequest(url: URL(string: "dairyos://app/")!))
         NotificationCenter.default.addObserver(self, selector: #selector(bluetoothBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(bluetoothForeground), name: UIApplication.didBecomeActiveNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.willResignActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(background), name: UIApplication.didEnterBackgroundNotification, object: nil)
     }
 
     @objc func bluetoothBackground() {
         bluetooth.event(["kind": "lifecycle", "active": false])
         bluetooth.disconnect("App paused. Output state is unknown; the board run limit still applies.")
     }
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        memoryPressure = true
+        if activeID == nil { releaseWarmRuntime() }
+    }
+    func prepareAI() {
+        guard webReady, !operatorTestActive, activeID == nil, worklet == nil,
+              !releasingRuntime, queuedRequest == nil, pausedRequest == nil,
+              UIApplication.shared.applicationState == .active,
+              ProcessInfo.processInfo.thermalState.rawValue < ProcessInfo.ThermalState.serious.rawValue,
+              !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
+        let file = home.appendingPathComponent("models/text-qwen3-4b-q3.gguf")
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
+              (attrs[.size] as? NSNumber)?.int64Value == models["text"]?.1 else { return }
+        memoryPressure = false
+        startAnswer("_warmup", ["mode": "warmup", "question": "Prepare local AI", "records": [], "references": [], "turns": []])
+    }
+    func drainQueuedRequest() {
+        guard activeID == nil, !releasingRuntime, let request = queuedRequest else { return }
+        queuedRequest = nil
+        startAnswer(request.id, request.input)
+    }
+    func releaseWarmRuntime() {
+        guard activeID == nil, worklet != nil, !releasingRuntime else { return }
+        releasingRuntime = true
+        write(["id": "_release", "command": "release", "value": [:]])
+        startupTimeout = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
+            self?.finish { self?.drainQueuedRequest() }
+        }
+    }
     @objc func bluetoothForeground() {
         UIApplication.shared.isIdleTimerDisabled = interactionBusy || operatorTestActive || activeID != nil
         bluetooth.event(["kind": "lifecycle", "active": true])
+        resumePendingRequest()
+        drainQueuedRequest()
+        prepareAI()
     }
     @objc func background() {
-        if activeID != nil { write(["id": "background", "command": "stop", "value": [:]]) }
+        guard let id = activeID, let input = activeInput else { releaseWarmRuntime(); return }
+        if id == "_warmup" {
+            write(["id": "background", "command": "stop", "value": [:]])
+            return
+        }
+        pausedRequest = (id, input, Date().addingTimeInterval(180))
+        emit(id, "status", "Request paused. Return to DairyOS within three minutes to continue.")
+        write(["id": "background", "command": "stop", "value": [:]])
+    }
+    func resumePendingRequest() {
+        guard UIApplication.shared.applicationState == .active, activeID == nil else { return }
+        if let reply = deferredReply {
+            deferredReply = nil
+            emit(reply.id, reply.type, reply.value)
+        } else if let pending = pausedRequest {
+            pausedRequest = nil
+            guard Date() <= pending.deadline else {
+                emit(pending.id, "error", "The request expired while DairyOS was in the background. Please ask again.")
+                return
+            }
+            emit(pending.id, "status", "Resuming your request on this iPhone…")
+            startAnswer(pending.id, pending.input)
+        }
     }
     func emit(_ id: String, _ type: String, _ value: Any) {
         guard let data = try? JSONSerialization.data(withJSONObject: ["id": id, "type": type, "value": value], options: [.fragmentsAllowed]), let json = String(data: data, encoding: .utf8) else { return }
@@ -124,6 +232,10 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
             if let data = try? Data(contentsOf: home.appendingPathComponent("semantic-validation.json")), let report = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let digest = modelWorkerDigest(), report["workerSHA256"] as? String == digest { emit(id, "result", report) }
             else { emit(id, "error", "No saved semantic validation is available.") }
         case "answer": startAnswer(id, value)
+        case "performanceValidation" where ProcessInfo.processInfo.environment["DAIRYOS_PERFORMANCE_TEST"] == "1":
+            var report = value; report["controlWrites"] = bluetooth.controlWrites
+            try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("performance-validation.json"), options: .atomic)
+            emit(id, "result", true)
         case "durationValidation" where ProcessInfo.processInfo.environment["DAIRYOS_DURATION_TEST"] == "1":
             var report = value; report["controlWrites"] = bluetooth.controlWrites
             if bluetooth.controlWrites != 0 { report["passed"] = false }
@@ -147,6 +259,19 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
             try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("sensor-chat-validation.json"), options: .atomic)
             emit(id, "result", true)
         case "stop":
+            if let queued = queuedRequest {
+                queuedRequest = nil
+                emit(queued.id, "error", "Request stopped. No command was sent.")
+            }
+            if let reply = deferredReply {
+                deferredReply = nil
+                emit(reply.id, "error", "Request stopped.")
+            }
+            if let pending = pausedRequest {
+                pausedRequest = nil
+                deferredReply = nil
+                emit(pending.id, "error", "Request stopped. No new command was sent.")
+            }
             if activeID != nil { write(["id": id, "command": "stop", "value": [:]]) } else { emit(id, "result", true) }
         case "photo": showPhotoPicker(id, camera: value["camera"] as? Bool ?? false)
         case "reconnectValidation" where reconnectTest:
@@ -186,6 +311,18 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
     }
 
     func startAnswer(_ id: String, _ input: [String: Any]) {
+        if activeID == "_warmup" || releasingRuntime {
+            guard queuedRequest == nil else { emit(id, "error", "Wait for the current answer to finish."); return }
+            queuedRequest = (id, input)
+            emit(id, "status", "Preparing AI on this iPhone…")
+            return
+        }
+        if UIApplication.shared.applicationState == .background {
+            guard activeID == nil, pausedRequest == nil else { emit(id, "error", "Wait for the current answer to finish."); return }
+            pausedRequest = (id, input, Date().addingTimeInterval(180))
+            emit(id, "status", "Request paused. Return to DairyOS within three minutes to continue.")
+            return
+        }
         inferenceRequests += 1
         guard activeID == nil else { emit(id, "error", "Wait for the current answer to finish."); return }
         guard let question = input["question"] as? String, !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, question.count <= 1500 else { emit(id, "error", "Enter a question up to 1,500 characters."); return }
@@ -198,6 +335,7 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
             do { try bytes.write(to: file, options: .atomic) } catch { emit(id, "error", error.localizedDescription); return }
             photoPath = file; value["photoPath"] = file.path
         }
+        activeInput = input
         activeID = id; bootQuestion = question; value["home"] = home.path
         value["diagnostics"] = ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1"
         value["device"] = ProcessInfo.processInfo.environment["DAIRYOS_MODEL_DEVICE"] == "cpu" ? "cpu" : "gpu"
@@ -207,6 +345,14 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
         incoming.removeAll(keepingCapacity: true)
         peakFootprint = 0; minAvailable = UInt64.max; sampleCount = 0
         sampling = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.sampleMemory() }
+        answerTimeout = Timer.scheduledTimer(withTimeInterval: 240, repeats: false) { [weak self] _ in
+            guard let self = self, self.activeID == id else { return }
+            self.write(["id": "timeout", "command": "stop", "value": [:]])
+        }
+        if worklet != nil, ipc != nil {
+            write(["id": id, "command": "answer", "value": value])
+            return
+        }
         writeStatus("runtime:configuration")
         let configuration = BareWorkletConfiguration.default()
         configuration?.memoryLimit = 256 * 1024 * 1024
@@ -234,12 +380,9 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
         }
         startupTimeout = Timer.scheduledTimer(withTimeInterval: 25, repeats: false) { [weak self] _ in
             guard let self = self, self.bootMessage != nil else { return }
-            self.finish { self.emit(id, "error", "The local AI runtime did not start. Records and the library remain available.") }
+            self.finish { if id != "_warmup" { self.emit(id, "error", "The local AI runtime did not start. Records and the library remain available.") }; self.drainQueuedRequest() }
         }
-        answerTimeout = Timer.scheduledTimer(withTimeInterval: 240, repeats: false) { [weak self] _ in
-            guard let self = self, self.activeID == id else { return }
-            self.write(["id": "timeout", "command": "stop", "value": [:]])
-        }
+
     }
     func write(_ object: [String: Any]) {
         guard var data = try? JSONSerialization.data(withJSONObject: object) else { return }
@@ -253,13 +396,37 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
         while let end = incoming.firstIndex(of: 10) {
             let line = incoming[..<end]; incoming.removeSubrange(...end)
             guard let message = (try? JSONSerialization.jsonObject(with: line)) as? [String: Any], let id = message["id"] as? String, let type = message["type"] as? String else { continue }
+            if id == "_release", type == "result" || type == "error" {
+                let completed = closeRuntimeCompletion; closeRuntimeCompletion = nil
+                finish { completed?(); self.drainQueuedRequest() }
+                continue
+            }
             if type == "phase" { writeStatus("runtime:" + String(describing: message["value"] ?? "")); continue }
+            if type == "ready", pausedRequest?.id == activeID {
+                finish { self.resumePendingRequest() }
+                continue
+            }
             if type == "ready" { writeStatus("runtime:workerReady"); startupTimeout?.invalidate(); startupTimeout = nil; if let boot = bootMessage { bootMessage = nil; write(boot) }; continue }
             if type == "status" { writeStatus("inference:" + String(describing: message["value"] ?? "")) }
-            if id == "boot" && type == "error", let requestID = activeID { finish { self.emit(requestID, "error", message["value"] ?? "Native runtime error") }; continue }
+            if id == "boot" && type == "error", let requestID = activeID {
+                finish {
+                    if requestID != "_warmup" { self.emit(requestID, "error", message["value"] ?? "Native runtime error") }
+                    self.drainQueuedRequest()
+                }
+                continue
+            }
             if id == activeID && (type == "result" || type == "error") {
+                if pausedRequest?.id == id {
+                    let result = message["value"] as? [String: Any]
+                    if type == "result", result?["stopped"] as? Bool != true {
+                        pausedRequest = nil
+                        deferredReply = (id, type, message["value"] ?? NSNull())
+                    }
+                    finish { self.resumePendingRequest() }
+                    continue
+                }
                 sampleMemory()
-                if selfTest || ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1" {
+                if selfTest || ProcessInfo.processInfo.environment["DAIRYOS_SEMANTIC_TEST"] == "1" || ProcessInfo.processInfo.environment["DAIRYOS_PERFORMANCE_TEST"] == "1" {
                     let report: [String: Any] = ["capturedAt": ISO8601DateFormatter().string(from: Date()), "peakSampledFootprintBytes": peakFootprint, "minimumSampledAvailableBytes": minAvailable, "samples": sampleCount, "question": bootQuestion ?? "", "type": type, "result": message["value"] ?? NSNull()]
                     try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: home.appendingPathComponent("last-inference-check.json"), options: .atomic)
                     let logFile = home.appendingPathComponent("inference-checks.json")
@@ -267,7 +434,19 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
                     logs.append(report)
                     try? JSONSerialization.data(withJSONObject: Array(logs.suffix(20)), options: [.prettyPrinted, .sortedKeys]).write(to: logFile, options: .atomic)
                 }
-                finish { self.emit(id, type, message["value"] ?? NSNull()) }
+                let result = message["value"] as? [String: Any]
+                let keep = type == "result" && result?["stopped"] as? Bool != true && !memoryPressure && UIApplication.shared.applicationState != .background
+                var finalValue = message["value"]
+                if var diagnostic = finalValue as? [String: Any] {
+                    diagnostic["runtimeRetained"] = keep
+                    diagnostic["memoryPressure"] = memoryPressure
+                    finalValue = diagnostic
+                }
+                finish(keepRuntime: keep) {
+                    if id != "_warmup" { self.emit(id, type, finalValue ?? NSNull()) }
+                    self.drainQueuedRequest()
+                    if id.hasPrefix("_benchmark") { self.recordPerformance(type, finalValue ?? NSNull()) }
+                }
                 continue
             }
             emit(id, type, message["value"] ?? NSNull())
@@ -275,19 +454,37 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
     }
     var bootQuestion: String?
     func writeStatus(_ stage: String) {
-        let status: [String: Any] = ["stage": stage, "selfTest": selfTest, "time": ISO8601DateFormatter().string(from: Date())]
+        let status: [String: Any] = ["stage": stage, "selfTest": selfTest, "performanceTest": ProcessInfo.processInfo.environment["DAIRYOS_PERFORMANCE_TEST"] == "1", "activeRequest": activeID ?? "", "time": ISO8601DateFormatter().string(from: Date())]
         try? JSONSerialization.data(withJSONObject: status, options: [.prettyPrinted]).write(to: home.appendingPathComponent("iphone-runtime-status.json"), options: .atomic)
     }
-    func finish(completion: (() -> Void)? = nil) {
+    func finish(keepRuntime: Bool = false, completion: (() -> Void)? = nil) {
         sampling?.invalidate(); sampling = nil
         startupTimeout?.invalidate(); startupTimeout = nil; answerTimeout?.invalidate(); answerTimeout = nil
+        if keepRuntime {
+            if let file = photoPath { try? FileManager.default.removeItem(at: file); photoPath = nil }
+            activeID = nil; activeInput = nil; bootMessage = nil
+            UIApplication.shared.isIdleTimerDisabled = interactionBusy || operatorTestActive
+            completion?()
+            return
+        }
+        if ipc != nil, !releasingRuntime, bootMessage == nil {
+            releasingRuntime = true
+            closeRuntimeCompletion = completion
+            write(["id": "_release", "command": "release", "value": [:]])
+            startupTimeout = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+                let completed = self.closeRuntimeCompletion; self.closeRuntimeCompletion = nil
+                self.finish { completed?(); self.drainQueuedRequest() }
+            }
+            return
+        }
         let previous = worklet; let channel = ipc
         ipc?.readable = nil; ipc = nil; worklet = nil; bootMessage = nil
         if let file = photoPath { try? FileManager.default.removeItem(at: file); photoPath = nil }
         // The worker completes QVAC cleanup before sending its final message.
         DispatchQueue.global(qos: .utility).async {
             channel?.close(); previous?.terminate()
-            DispatchQueue.main.async { self.activeID = nil; UIApplication.shared.isIdleTimerDisabled = self.interactionBusy || self.operatorTestActive; completion?() }
+            DispatchQueue.main.async { self.activeID = nil; self.activeInput = nil; self.releasingRuntime = false; UIApplication.shared.isIdleTimerDisabled = self.interactionBusy || self.operatorTestActive; completion?() }
         }
     }
     func modelWorkerDigest() -> String? {
@@ -338,6 +535,12 @@ final class PhoneController: UIViewController, WKScriptMessageHandler, WKNavigat
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { picker.dismiss(animated: true); deliverPhoto(nil) }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) { decisionHandler(navigationAction.request.url?.scheme == "dairyos" ? .allow : .cancel) }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        webReady = true
+        if ProcessInfo.processInfo.environment["DAIRYOS_PERFORMANCE_TEST"] == "1" {
+            performanceStarted = Date(); performanceRows = []; savePerformance()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.runPerformanceRequest() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.prepareAI() }
         if ProcessInfo.processInfo.environment["DAIRYOS_DURATION_TEST"] == "1", let url = Bundle.main.url(forResource: "duration-test", withExtension: "js"), let script = try? String(contentsOf: url) { webView.evaluateJavaScript(script, completionHandler: nil) }
         if ProcessInfo.processInfo.environment["DAIRYOS_CHAT_FEEDBACK_TEST"] == "1", let url = Bundle.main.url(forResource: "chat-feedback-test", withExtension: "js"), let script = try? String(contentsOf: url) { webView.evaluateJavaScript(script, completionHandler: nil) }
         if ProcessInfo.processInfo.environment["DAIRYOS_AUTOMATIC_BLE_TEST"] == "1", let url = Bundle.main.url(forResource: "automatic-ble-test", withExtension: "js"), let script = try? String(contentsOf: url) { webView.evaluateJavaScript(script, completionHandler: nil) }

@@ -1,7 +1,6 @@
 import type { runInference } from './engine';
 import { phoneRequest, phoneShell } from './phone-shell';
-import { localReply } from './commands';
-import { localDate, makePrompt } from './domain';
+import { makePrompt } from './domain';
 type Options = Omit<Parameters<typeof runInference>[0], 'paths' | 'prepare' | 'loadSDK' | 'device'>;
 let controller: AbortController | undefined;
 let phoneBusy = false;
@@ -11,12 +10,6 @@ export async function answerQuestion(options: Options) {
   if (isBusy()) throw new Error('Wait for the current answer.');
   if (phoneShell) {
     makePrompt(options.question, options.records, options.references, options.turns, !!options.photoPath, undefined, options.localDate);
-    const direct = !options.mode && !options.photoPath && localReply(options.question, options.records, options.localDate ?? localDate());
-    if (direct) {
-      options.onText(direct.text);
-      options.onStatus('Ready · local response');
-      return { text: direct.text, origin: direct.origin, references: [], observation: '', elapsedMs: 0, firstTokenMs: undefined, stopped: false, limited: false };
-    }
     phoneBusy = true;
     try {
       return await phoneRequest<Awaited<ReturnType<typeof runInference>>>('answer', { mode: options.mode, question: options.question, records: options.records, references: options.references, turns: options.turns, localDate: options.localDate, photo: options.photoPath }, event => {

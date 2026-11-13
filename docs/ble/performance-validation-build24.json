@@ -1,0 +1,319 @@
+{
+  "completedAt": "2026-11-13T16:13:45Z",
+  "controlWrites": 0,
+  "passed": true,
+  "requests": [
+    {
+      "elapsedMs": 24789.875374913216,
+      "firstTokenMs": 13919.221499919891,
+      "generationTimings": [
+        {
+          "elapsedMs": 13397.760958075523,
+          "firstTokenMs": 10520.256083011627,
+          "generatedTokens": 26,
+          "stage": "interpretation"
+        },
+        {
+          "elapsedMs": 7992.845291018486,
+          "firstTokenMs": 2857.257707953453,
+          "generatedTokens": 52,
+          "stage": "verification"
+        }
+      ],
+      "label": "sensor-cold",
+      "limited": false,
+      "memoryPressure": false,
+      "modelLoadMs": 3393.914582967758,
+      "observation": "",
+      "origin": "model",
+      "passed": true,
+      "proposedIntent": {
+        "humidity": true,
+        "kind": "sensors",
+        "temperature": true
+      },
+      "question": "What are the temperature and humidity right now?",
+      "references": [],
+      "reusedModel": false,
+      "runtimeRetained": true,
+      "stopped": false,
+      "text": "{\"intent\":\"sensors\",\"target\":0,\"state\":\"unknown\",\"seconds\":0,\"metric\":\"both\",\"clarification\":\"\"}",
+      "verification": {
+        "approved": true,
+        "clarification": "",
+        "requestMeaning": "Ask for the current measured temperature and humidity values.",
+        "seconds": 0,
+        "state": "unknown",
+        "target": 0
+      },
+      "wallMs": 25417.612075805664
+    },
+    {
+      "elapsedMs": 21299.122416973114,
+      "firstTokenMs": 10283.25024998188,
+      "generationTimings": [
+        {
+          "elapsedMs": 13150.873833060265,
+          "firstTokenMs": 10282.651250004768,
+          "generatedTokens": 26,
+          "stage": "interpretation"
+        },
+        {
+          "elapsedMs": 8147.518584012985,
+          "firstTokenMs": 2902.3813749551773,
+          "generatedTokens": 52,
+          "stage": "verification"
+        }
+      ],
+      "label": "sensor-warm1",
+      "limited": false,
+      "memoryPressure": false,
+      "modelLoadMs": 0,
+      "observation": "",
+      "origin": "model",
+      "passed": true,
+      "proposedIntent": {
+        "humidity": true,
+        "kind": "sensors",
+        "temperature": true
+      },
+      "question": "What are the temperature and humidity right now?",
+      "references": [],
+      "reusedModel": true,
+      "runtimeRetained": true,
+      "stopped": false,
+      "text": "{\"intent\":\"sensors\",\"target\":0,\"state\":\"unknown\",\"seconds\":0,\"metric\":\"both\",\"clarification\":\"\"}",
+      "verification": {
+        "approved": true,
+        "clarification": "",
+        "requestMeaning": "Ask for the current measured temperature and humidity values.",
+        "seconds": 0,
+        "state": "unknown",
+        "target": 0
+      },
+      "wallMs": 21312.74402141571
+    },
+    {
+      "elapsedMs": 23735.166041970253,
+      "firstTokenMs": 10310.167667031288,
+      "generationTimings": [
+        {
+          "elapsedMs": 13476.623916983604,
+          "firstTokenMs": 10309.467332959175,
+          "generatedTokens": 26,
+          "stage": "interpretation"
+        },
+        {
+          "elapsedMs": 10257.714334011078,
+          "firstTokenMs": 3315.458374977112,
+          "generatedTokens": 52,
+          "stage": "verification"
+        }
+      ],
+      "label": "sensor-warm2",
+      "limited": false,
+      "memoryPressure": false,
+      "modelLoadMs": 0,
+      "observation": "",
+      "origin": "model",
+      "passed": true,
+      "proposedIntent": {
+        "humidity": true,
+        "kind": "sensors",
+        "temperature": true
+      },
+      "question": "What are the temperature and humidity right now?",
+      "references": [],
+      "reusedModel": true,
+      "runtimeRetained": true,
+      "stopped": false,
+      "text": "{\"intent\":\"sensors\",\"target\":0,\"state\":\"unknown\",\"seconds\":0,\"metric\":\"both\",\"clarification\":\"\"}",
+      "verification": {
+        "approved": true,
+        "clarification": "",
+        "requestMeaning": "Ask for the current measured temperature and humidity values.",
+        "seconds": 0,
+        "state": "unknown",
+        "target": 0
+      },
+      "wallMs": 23747.585892677307
+    },
+    {
+      "elapsedMs": 14244.332249999046,
+      "firstTokenMs": 11249.117542028427,
+      "generationTimings": [
+        {
+          "elapsedMs": 14243.416000008583,
+          "firstTokenMs": 11248.249832987785,
+          "generatedTokens": 25,
+          "stage": "interpretation"
+        }
+      ],
+      "label": "hello-interpretation",
+      "limited": false,
+      "memoryPressure": false,
+      "modelLoadMs": 0,
+      "observation": "",
+      "origin": "model",
+      "passed": true,
+      "proposedIntent": {
+        "kind": "none"
+      },
+      "question": "hello",
+      "references": [],
+      "reusedModel": true,
+      "runtimeRetained": true,
+      "stopped": false,
+      "text": "{\"intent\":\"none\",\"target\":0,\"state\":\"unknown\",\"seconds\":0,\"metric\":\"both\",\"clarification\":\"\"}",
+      "wallMs": 14261.704921722412
+    },
+    {
+      "elapsedMs": 13407.505458950996,
+      "firstTokenMs": 9381.724166989326,
+      "generationTimings": [
+        {
+          "elapsedMs": 13406.497166991234,
+          "firstTokenMs": 9380.790624976158,
+          "generatedTokens": 31,
+          "stage": "answer"
+        }
+      ],
+      "label": "hello-answer",
+      "limited": false,
+      "memoryPressure": false,
+      "modelLoadMs": 0,
+      "observation": "",
+      "origin": "model",
+      "passed": true,
+      "question": "hello",
+      "references": [],
+      "reusedModel": true,
+      "runtimeRetained": true,
+      "stopped": false,
+      "text": "Hello! No farm records entered yet. Can you confirm if you're managing a crop, livestock, or both? (e.g., maize, cows)",
+      "wallMs": 13426.057934761047
+    },
+    {
+      "elapsedMs": 15239.041916012764,
+      "firstTokenMs": 12037.558207988739,
+      "generationTimings": [
+        {
+          "elapsedMs": 15237.893083930016,
+          "firstTokenMs": 12036.457749962807,
+          "generatedTokens": 25,
+          "stage": "interpretation"
+        }
+      ],
+      "label": "guidance-interpretation",
+      "limited": false,
+      "memoryPressure": false,
+      "modelLoadMs": 0,
+      "observation": "",
+      "origin": "model",
+      "passed": true,
+      "proposedIntent": {
+        "kind": "none"
+      },
+      "question": "How do I keep milking clean? Give three brief steps.",
+      "references": [],
+      "reusedModel": true,
+      "runtimeRetained": true,
+      "stopped": false,
+      "text": "{\"intent\":\"none\",\"target\":0,\"state\":\"unknown\",\"seconds\":0,\"metric\":\"both\",\"clarification\":\"\"}",
+      "wallMs": 15269.27399635315
+    },
+    {
+      "elapsedMs": 26537.77920794487,
+      "firstTokenMs": 15317.3291670084,
+      "generationTimings": [
+        {
+          "elapsedMs": 26536.751124978065,
+          "firstTokenMs": 15316.464666962624,
+          "generatedTokens": 67,
+          "stage": "answer"
+        }
+      ],
+      "label": "guidance-answer",
+      "limited": false,
+      "memoryPressure": false,
+      "modelLoadMs": 0,
+      "observation": "",
+      "origin": "model",
+      "passed": true,
+      "question": "How do I keep milking clean? Give three brief steps.",
+      "references": [
+        {
+          "id": "fao-dairy-hygiene",
+          "keywords": [
+            "milk",
+            "milking",
+            "hygiene",
+            "clean",
+            "maziwa",
+            "kukamua",
+            "usafi"
+          ],
+          "section": "FAO/IDF 2011, section 2.2",
+          "source": "https://www.fao.org/4/ba0027e/ba0027e00.pdf",
+          "text": "Keep animal resting areas and milking areas clean and well drained. Maintain dry, clean bedding. Milkers should use clean clothing and hands and cover cuts. Clean milking equipment after each milking and before reuse; use suitable water and follow approved cleaning-product instructions. Keep cleaning chemicals away from stored milk. These practices reduce contamination risk but do not diagnose udder disease.",
+          "title": "Clean milking routines"
+        },
+        {
+          "id": "fao-animal-observation",
+          "keywords": [
+            "animal",
+            "livestock",
+            "cow",
+            "cattle",
+            "goat",
+            "sheep",
+            "sick",
+            "health",
+            "appetite",
+            "breathing",
+            "ngombe",
+            "mbuzi",
+            "kondoo",
+            "mnyama",
+            "wagonjwa",
+            "afya"
+          ],
+          "section": "FAO primary animal health care, units 5\u20136",
+          "source": "https://www.fao.org/4/t0690e/t0690e04.htm",
+          "text": "Compare an animal with its usual behavior and with healthy animals of the same kind. Observe appetite, movement, breathing, appearance and whether it stays apart from the group. Record changes and when they began. Keep sick animals separate from healthy animals where this can be done safely, with clean feed, drinking water, bedding and shelter. Observations support a health assessment; they do not identify the disease or determine a drug treatment.",
+          "title": "Observe livestock health and separate sick animals"
+        },
+        {
+          "id": "fao-poultry-housing",
+          "keywords": [
+            "poultry",
+            "chicken",
+            "chickens",
+            "house",
+            "housing",
+            "ventilation",
+            "heat",
+            "water",
+            "kuku",
+            "banda",
+            "joto",
+            "maji"
+          ],
+          "section": "FAO small-scale poultry production, chapter 4: housing",
+          "source": "https://www.fao.org/4/y5169e/y5169e05.htm",
+          "text": "Provide clean drinking water and housing that allows air movement around the birds. Housing design must suit the climate, available space and production system. Good shelter and drainage matter. Inspect actual house conditions before changing ventilation or stocking arrangements; this starter note does not specify stocking densities or temperature targets.",
+          "title": "Poultry housing and drinking water"
+        }
+      ],
+      "reusedModel": true,
+      "runtimeRetained": true,
+      "stopped": false,
+      "text": "1. Clean milking equipment after each use with approved water and chemicals.  \n2. Keep resting and milking areas dry, well-drained, and free of manure.  \n3. Ensure milkers wear clean clothing and cover cuts; avoid contact with stored milk.  \n\n(From: fao-dairy-hygiene)",
+      "wallMs": 26556.51903152466
+    }
+  ],
+  "startedAt": "2026-11-13T16:11:24Z",
+  "build": 24,
+  "scope": "Native inference pipeline on connected iPhone 13 Pro Max. Synthetic test questions only; no BLE reading/actuation latency or network state verification.",
+  "model": "Qwen3-4B-Instruct-2507 local Q3_K_M, QVAC 0.22.0, 24 GPU layers"
+}

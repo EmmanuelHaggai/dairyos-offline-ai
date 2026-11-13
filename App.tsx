@@ -122,7 +122,7 @@ export default function App() {
         void refreshModels().then(setModels).catch(() => {});
       } catch (error) { setStatus('Storage error: ' + errorText(error)); setFailure('Local storage could not be opened. ' + errorText(error)); }
     })();
-    const listener = AppState.addEventListener('change', state => { setBLEForeground(state === 'active'); if (state !== 'active') void stopInference().catch(() => {}); });
+    const listener = AppState.addEventListener('change', state => { if (phoneShell) return; if (state !== 'inactive') setBLEForeground(state === 'active'); if (state === 'background') void stopInference().catch(() => {}); });
     return () => { listener.remove(); void stopInference().catch(() => {}); };
   }, []);
 
@@ -194,7 +194,8 @@ export default function App() {
     if (!selectedPhoto) {
       try {
         let interpretation = await answerQuestion({ mode: 'intent', question: text, records: [], references: [], turns: [], onStatus: setStatus, onText: () => {} });
-        if (interpretation.stopped || interpretation.limited) throw new Error('Request interpretation was interrupted. No command was sent.');
+        if (interpretation.stopped) throw new Error('Request interpretation stopped. No command was sent.');
+        if (interpretation.limited) throw new Error('The AI reached its interpretation limit. Try a shorter request. No command was sent.');
         let intent = validateIntent(interpretation.text);
         if (intent.kind === 'clarify' && turns.length) {
           interpretation = await answerQuestion({ mode: 'intent', question: text, records: [], references: [], turns, onStatus: setStatus, onText: () => {} });
@@ -234,7 +235,7 @@ export default function App() {
         await saveTurn({ question: text, answer: body, createdAt: new Date().toISOString(), references: result.references, photo: !!selectedPhoto, elapsedMs: result.elapsedMs, status: result.stopped || result.limited ? 'stopped' : 'complete' });
         setTurns(await getTurns()); setSubmitted(undefined);
       }
-      setMetrics(result.origin === 'records' ? 'Calculated directly from saved local records; no model used.' : result.origin === 'local' ? 'Immediate local response; no model used.' : result.origin === 'library' ? 'Unreliable photo assessment discarded; showing the offline inspection guide.' : `${result.stopped || result.limited ? 'Partial answer' : 'Completed'} in ${(result.elapsedMs / 1000).toFixed(1)}s. First generation token: ${result.firstTokenMs === undefined ? 'none' : (result.firstTokenMs / 1000).toFixed(1) + 's'}.`);
+      setMetrics(result.origin === 'library' ? 'Unreliable photo assessment discarded; showing the offline inspection guide.' : `${result.stopped || result.limited ? 'Partial answer' : 'Completed'} in ${(result.elapsedMs / 1000).toFixed(1)}s. First generation token: ${result.firstTokenMs === undefined ? 'none' : (result.firstTokenMs / 1000).toFixed(1) + 's'}.`);
       setAnswer(''); removePhoto();
     } catch (error) { setFailure(errorText(error)); setAnswer(''); revealLatest(); }
 
@@ -309,6 +310,7 @@ export default function App() {
           {!loaded && !failure && <View style={styles.busyLine}><ActivityIndicator color={c.forest2} /><Text style={s.caption}>Opening local storage…</Text></View>}
           {tab === 'Ask' && <View style={[styles.askLayout, desktop && styles.columns]}><View style={styles.chatColumn}>
             <Heading eyebrow={dateHeading} title="Your farm, at hand." subtitle="Ask about your farm, check a record or add a photo." wide={desktop} />
+            <View style={styles.sectionBar}><Text style={s.caption}>Check nearby conditions without waiting for AI.</Text><Button label="Temperature & humidity" icon="device" variant="secondary" onPress={() => setTab('Devices')} /></View>
             {!textReady && <View style={styles.setupNotice}><Icon name="info" color={c.warning} /><Text style={[s.caption, s.grow]}>Add model files in Setup to use AI. Records and the library already work.</Text><Button label="Open Setup" icon="arrow" iconOnly variant="ghost" onPress={() => setTab('Setup')} /></View>}
             {!desktop && !turns.length && !submitted && <TodaySummary records={records} onOpen={() => setTab('Records')} />}
             {!turns.length && !submitted && <PromptList disabled={locked} onChoose={setQuestion} />}

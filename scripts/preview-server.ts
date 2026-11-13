@@ -5,7 +5,6 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { runInference, stopInference, isBusy } from '../src/engine';
 import type { FarmRecord, Reference, Turn } from '../src/domain';
 import { localDate, validateRecord } from '../src/domain';
-import { localReply } from '../src/commands';
 import { dockerBusy, runDockerInference, stopDockerInference } from './docker-inference';
 import { expectedModelBytes, modelNames } from '../src/model-specs';
 
@@ -55,8 +54,7 @@ const server = http.createServer(async (req, res) => {
       const send = (type: string, value: unknown) => { if (!res.destroyed) res.write(JSON.stringify({ type, value }) + '\n'); };
       res.on('close', () => { if (!res.writableEnded) { stopDockerInference(); void stopInference().catch(() => {}); } });
       try {
-        const directRecord = input.mode !== 'intent' && !photoPath && localReply(input.question, records, input.localDate ?? localDate()) !== null;
-        const infer = !directRecord && process.env.DAIRYOS_DESKTOP_DOCKER === '1' ? (options: Parameters<typeof runInference>[0]) => runDockerInference(root, options) : runInference;
+        const infer = process.env.DAIRYOS_DESKTOP_DOCKER === '1' ? (options: Parameters<typeof runInference>[0]) => runDockerInference(root, options) : runInference;
         const result = await infer({ mode: input.mode === 'intent' ? 'intent' : undefined, question: input.question, records, references, turns, localDate: input.localDate ?? localDate(), photoPath, paths, device: 'cpu',
           prepare: async () => {
             for (const key of photoPath ? ['text', 'vision', 'projection'] as const : ['text'] as const) {
